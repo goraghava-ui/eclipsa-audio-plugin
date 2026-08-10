@@ -39,7 +39,9 @@
  ===============================================================================
  */
 
-#include "Ebu128LoudnessMeter.h"
+// The file is EBU128LoudnessMeter.h; "Ebu128..." only resolves on
+// case-insensitive filesystems (macOS, Windows), not on Linux.
+#include "EBU128LoudnessMeter.h"
 
 // static member constants
 // -----------------------

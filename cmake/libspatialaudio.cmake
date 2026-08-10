@@ -42,10 +42,23 @@ FetchContent_Declare(
 # This is the B1 fix. B2 removes the dependency entirely by routing
 # substream_rdr through KALA's own clean-room VBAP/AllRAD over the kala-cabi
 # C ABI — see CLEAN-ROOM-LOG.md §3.1 option (b).
+#
+# Note the target names: libspatialaudio does NOT honour BUILD_SHARED_LIBS the
+# usual way. It defines BOTH `spatialaudio-static` and `spatialaudio-shared`,
+# each behind its own option (BUILD_STATIC_LIBS / BUILD_SHARED_LIBS, both
+# default ON). So the shared target is `spatialaudio-shared`, and simply
+# flipping BUILD_SHARED_LIBS is not enough — the link line below has to name it.
+# It must be the NORMAL variable, not the cache entry: third_party/CMakeLists.txt
+# line 15 does a plain `set(BUILD_SHARED_LIBS OFF)`, and a normal variable
+# shadows the cache one for everything below it — including inside the
+# add_subdirectory that FetchContent_MakeAvailable performs. Forcing only the
+# cache entry silently has no effect. CMP0077 is NEW (set in the root
+# CMakeLists), so the subproject's option() honours the normal variable.
 set(_ECLIPSA_SAVED_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
-set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS ON)
+set(BUILD_STATIC_LIBS OFF)
 FetchContent_MakeAvailable(libspatialaudio)
-set(BUILD_SHARED_LIBS ${_ECLIPSA_SAVED_BUILD_SHARED_LIBS} CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS ${_ECLIPSA_SAVED_BUILD_SHARED_LIBS})
 set(spatialaudio_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/libspatialaudio-src")
 set(spatialaudio_BUILD_DIR "${CMAKE_BINARY_DIR}/_deps/libspatialaudio-build")
 
@@ -64,7 +77,9 @@ endif()
 # Link to the CMake target - CMake handles platform-specific library names.
 # LGPL-2.1: link the SHARED target. Never `spatialaudio-static` — see the note
 # above and CLEAN-ROOM-LOG.md §3.1.
-if (TARGET spatialaudio)
+if (TARGET spatialaudio-shared)
+    target_link_libraries(libspatialaudio INTERFACE spatialaudio-shared)
+elseif (TARGET spatialaudio)
     target_link_libraries(libspatialaudio INTERFACE spatialaudio)
 elseif (TARGET spatialaudio-static)
     message(FATAL_ERROR

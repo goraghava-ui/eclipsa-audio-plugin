@@ -65,7 +65,7 @@ class PresentationEditorTab : public juce::Component,
 
   void updateLocalMap(const int& index);
 
-  const std::set<juce::Uuid> const getAudioElementsToDraw() const {
+  const std::set<juce::Uuid> getAudioElementsToDraw() const {
     std::set<juce::Uuid> audioElementsToDraw;
     for (auto& audioElement : audioElementsAlreadyDrawn_) {
       audioElementsToDraw.insert(audioElement.first);

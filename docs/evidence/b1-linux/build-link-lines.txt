@@ -1,0 +1,4 @@
+[1/5] Linking CXX shared module "audioelementplugin/AudioElementPlugin_artefacts/Release/VST3/Eclipsa Audio Element Plugin.vst3/Contents/x86_64-linux/Eclipsa Audio Element Plugin.so"
+[2/5] Linking CXX executable "audioelementplugin/AudioElementPlugin_artefacts/Release/Standalone/Eclipsa Audio Element Plugin"
+[3/5] Linking CXX shared module "rendererplugin/RendererPlugin_artefacts/Release/VST3/Eclipsa Audio Renderer.vst3/Contents/x86_64-linux/Eclipsa Audio Renderer.so"
+[4/5] Linking CXX executable "rendererplugin/RendererPlugin_artefacts/Release/Standalone/Eclipsa Audio Renderer"
