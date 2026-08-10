@@ -97,6 +97,16 @@ void FileOutputProcessor::setNonRealtime(const bool isNonRealtime) noexcept {
   }
 }
 
+#if FRIDAY_KALA_EXPORT
+void FileOutputProcessor::releaseResources() {
+  if (!performingRender_) return;
+  LOG_ANALYTICS(0, "releaseResources with an export still open — finalising");
+  FileExport config = fileExportRepository_.get();
+  closeFileExport(config);
+  performingRender_ = false;
+}
+#endif
+
 void FileOutputProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                        juce::MidiBuffer& midiMessages) {
   juce::ignoreUnused(midiMessages);
@@ -119,6 +129,12 @@ void FileOutputProcessor::processBlock(juce::AudioBuffer<float>& buffer,
       }
     }
   }
+
+#if FRIDAY_KALA_EXPORT
+  // FRIDAY Bridge B2: object audio reaches KALA over its own transport, so
+  // this call only keeps the writer's open/closed accounting honest.
+  if (kalaIamfWriter_) kalaIamfWriter_->writeFrame(buffer);
+#endif
 
   // Process IAMF File
   if (iamfFileWriter_ && !iamfFileWriter_->writeFrame(buffer)) {
@@ -177,6 +193,21 @@ void FileOutputProcessor::initializeFileExport(FileExport& config) {
   const juce::String kIamfPath = config.getExportFile();
   if (FileExport::validateFilePath(
           FileExport::expandTildePath(kIamfPath).toStdString(), false)) {
+#if FRIDAY_KALA_EXPORT
+    // FRIDAY Bridge B2: KALA renders the captured objects and writes the
+    // .iamf; iamf-tools stays out of the deliverable path entirely so the
+    // bitstream is byte-comparable with Studio's.
+    kalaIamfWriter_ =
+        std::make_unique<KalaIamfWriter>(fileExportRepository_,
+                                         config.getSampleRate());
+    if (!kalaIamfWriter_->open(kIamfPath.toStdString())) {
+      kalaIamfWriter_ = nullptr;
+      LOG_ERROR(0, "KALA IAMF writer: failed to arm for " +
+                       kIamfPath.toStdString());
+      config.setExportError(classifyWriteFailure(kIamfPath));
+      fileExportRepository_.update(config);
+    }
+#else
     // Create an IAMF file writer to perform the file writing
     iamfFileWriter_ = std::make_unique<IAMFFileWriter>(
         fileExportRepository_, audioElementRepository_,
@@ -192,6 +223,7 @@ void FileOutputProcessor::initializeFileExport(FileExport& config) {
       config.setExportError(classifyWriteFailure(kIamfPath));
       fileExportRepository_.update(config);
     }
+#endif
   } else {
     LOG_WARNING(
         0, "FileOutputProcessor: Cannot write IAMF data to an invalid path.");
@@ -236,6 +268,19 @@ void FileOutputProcessor::closeFileExport(const FileExport& config) {
 
   // If muxing is enabled and audio export was successful, mux the audio and
   // video files.
+#if FRIDAY_KALA_EXPORT
+  const bool kHadKalaWriter = kalaIamfWriter_ != nullptr;
+  const bool kKalaExported = kalaIamfWriter_ ? kalaIamfWriter_->close() : false;
+  if (kHadKalaWriter) {
+    if (!kKalaExported) {
+      FileExport freshConfig = fileExportRepository_.get();
+      if (freshConfig.recordExportErrorIfUnset(kFileWriteFailed)) {
+        fileExportRepository_.update(freshConfig);
+      }
+    }
+    kalaIamfWriter_ = nullptr;
+  }
+#endif
   const bool kHadIamfWriter = iamfFileWriter_ != nullptr;
   const bool kIamfExported = iamfFileWriter_ ? iamfFileWriter_->close() : false;
   if (kHadIamfWriter && !kIamfExported) {

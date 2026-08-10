@@ -35,6 +35,9 @@
 #include "data_repository/implementation/FilePlaybackRepository.h"
 #include "data_repository/implementation/MixPresentationLoudnessRepository.h"
 #include "iamf_export_utils/IAMFFileWriter.h"
+#if FRIDAY_KALA_EXPORT
+#include "iamf_export_utils/KalaIamfWriter.h"
+#endif
 
 //==============================================================================
 class FileOutputProcessor : public ProcessorBase {
@@ -55,6 +58,17 @@ class FileOutputProcessor : public ProcessorBase {
   void setNonRealtime(bool isNonRealtime) noexcept override;
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
+
+#if FRIDAY_KALA_EXPORT
+  // FRIDAY Bridge B2 safety net. Upstream finalises the export from
+  // setNonRealtime(false), which the host only issues once it next returns to
+  // realtime — on a headless bench with no working audio device that never
+  // happens, so an otherwise complete offline bounce would never be written.
+  // JUCE guarantees releaseResources() before the processor goes away, so this
+  // closes any export still open. Compiled in only with the KALA path; upstream
+  // semantics are untouched.
+  void releaseResources() override;
+#endif
 
   //==============================================================================
   juce::AudioProcessorEditor* createEditor() override { return nullptr; }
@@ -121,6 +135,12 @@ class FileOutputProcessor : public ProcessorBase {
   juce::int64 sampleTally_;
   juce::int64 framesWritten_ = 0;  // samples handed to the writers this export
   std::unique_ptr<IAMFFileWriter> iamfFileWriter_;
+#if FRIDAY_KALA_EXPORT
+  // FRIDAY Bridge B2: when armed, this replaces iamfFileWriter_ for the .iamf
+  // deliverable. Eclipsa's own writers (per-element WAV, muxing) are
+  // untouched. See BRIDGE-B2-PLAN.md.
+  std::unique_ptr<KalaIamfWriter> kalaIamfWriter_;
+#endif
   void* securityScopedHandle_ = nullptr;
   //==============================================================================
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FileOutputProcessor)

@@ -87,6 +87,10 @@ target_link_libraries(substream_rdr INTERFACE
         libear
         data_structures
 )
+if (FRIDAY_KALA_EXPORT)
+    target_link_libraries(processors INTERFACE kala_cabi)
+    target_link_libraries(components INTERFACE kala_cabi)
+endif ()
 target_link_libraries(processors INTERFACE
         gpac
         libear

@@ -24,6 +24,10 @@
 #include "file_output/iamf_export_utils/IAMFExportUtil.cpp"
 #include "file_output/iamf_export_utils/IAMFFileReader.cpp"
 #include "file_output/iamf_export_utils/IAMFFileWriter.cpp"
+#if FRIDAY_KALA_EXPORT
+#include "file_output/iamf_export_utils/KalaIamfWriter.cpp"
+#include "friday/FridayObjectTransport.cpp"
+#endif
 #include "file_playback/FilePlaybackProcessor.cpp"
 #include "file_playback/IAMFBufferedReader.cpp"
 #include "gain/GainEditor.cpp"

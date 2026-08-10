@@ -163,9 +163,9 @@ failure when the spatial maths is in fact identical.
 | 1. Map + design | ✅ done — this document |
 | 2. Studio headless reference | ✅ done — see §7 |
 | 3. kala-cabi .so + null vs reference | ✅ **done — byte-identical, see §8** |
-| 4. Bridge swap | ⏸ **blocked on owner approval of Design B** |
+| 4. Bridge swap | ⚠️ **implemented and building; does NOT finalise on this bench — see §11** |
 | 5. Null harness | ✅ built and validated on the kala-cabi ↔ Studio pair (§9); re-runs unchanged against `bridge.iamf` once step 4 lands |
-| 6. B1 regression with export ON | ⏸ blocked on step 4 |
+| 6. B1 regression with export ON | ✅ **PASS — monitoring unchanged, see §12** |
 
 ## 7. Step 2 result — Studio stands headless on this bench
 
@@ -289,3 +289,87 @@ Recommendation: **lock-free SPSC ring on the audio thread feeding a second ZMQ
 topic from a worker thread** — it keeps `processBlock` allocation-free and
 lock-free (KALA's own RT rule, `CLAUDE.md` §3) while reusing the transport that
 already works between these two plugins.
+
+---
+
+## 11. Step 4 — implemented, not yet demonstrated end to end
+
+Design B is built and compiles into both VST3 plugins with
+`FRIDAY_KALA_EXPORT=ON` (default in this fork; `OFF` restores upstream exactly).
+
+| Piece | File |
+|---|---|
+| Lock-free SPSC ring + ZeroMQ object bus (port 5556; 5555 stays Eclipsa's metadata bus) | `common/processors/friday/FridayObjectTransport.{h,cpp}` |
+| Capture tap, inserted before `Panner3DProcessor` | `common/processors/friday/FridayObjectCaptureProcessor.h` |
+| KALA writer (objects → `kala_session_*` → `.iamf`) | `common/processors/file_output/iamf_export_utils/KalaIamfWriter.{h,cpp}` |
+| Path selection | `common/processors/file_output/FileOutputProcessor.{h,cpp}` |
+| Option + kala-cabi linkage | root `CMakeLists.txt`, `common/CMakeLists.txt` |
+
+`processBlock` on the audio thread only memcpys into a preallocated ring and
+bumps an atomic; a worker thread does the serialisation and the ZeroMQ send, so
+KALA's RT rule (`CLAUDE.md` §3: no allocation, no locks, no syscalls) holds.
+
+**What works:** the path arms through Eclipsa's real export lifecycle. The
+plugin's own log, from a headless bounce driven by ReaScript:
+
+```
+FileOutputProcessor.cpp initializeFileExport 143  Beginning .iamf file export
+KalaIamfWriter.cpp open 43                        KALA export path armed: …/bridge.iamf
+```
+
+**What does not:** the export never finalises here, so **no `bridge.iamf` is
+produced and gate GA is NOT claimed.**
+
+Root cause is upstream's finalisation trigger, not the KALA code.
+`FileOutputProcessor::setNonRealtime` arms on `true` and finalises on `false`,
+and a host only issues `false` when it next returns to realtime. This bench has
+no working audio device — JACK is not running and REAPER falls back to nothing —
+so the transport never rolls, `setNonRealtime(false)` is never delivered, and
+`closeFileExport` is never called. Driving `OnPlayButton`/`OnStopButton` from
+ReaScript does not help for the same reason.
+
+A `releaseResources()` safety net was added (guarded by `FRIDAY_KALA_EXPORT`, so
+upstream semantics are untouched) to finalise any export still open when JUCE
+tears the processor down. It does not fire before the harness's timeout either,
+and the session now hangs at shutdown rather than reaching it.
+
+### To finish this, in order
+
+1. **Give REAPER a working audio device** (ALSA on the X-Fi, or a dummy device).
+   That alone should let `setNonRealtime(false)` arrive and the existing code
+   complete — it is the smallest change and touches no plugin code.
+2. If that is not wanted on the bench, add an explicit finalise trigger that
+   does not depend on the host transport — e.g. a `FileExport` repository flag
+   the harness can set, which is also the honest fix for any offline/CI export.
+3. Then run the null harness (§9) against `bridge.iamf` unchanged.
+
+### Also outstanding
+
+- The shutdown hang above needs a real diagnosis. The publisher's post-shutdown
+  drain was made bounded (an unbounded "drain until empty" can spin forever
+  while the audio thread is still pushing, so the join in `~ObjectPublisher`
+  never returns), but that did not clear it. Note the pre-existing renderer
+  crash at exit — `boost::log::core::~core()` in an atexit handler, confirmed
+  by gdb and recorded in `docs/B1-LINUX-EVIDENCE.md` §4 — is a separate,
+  older defect present before any B2 work.
+- The object wire format carries one position per block and the receiver keeps
+  the last one. Fine for the static pan the gate uses; automation needs
+  per-block positions preserved, matching Studio's block-ramped render.
+
+## 12. Step 6 — B1 regression PASSES
+
+The B1 audio gate re-run against the `FRIDAY_KALA_EXPORT=ON` build, unchanged
+harness. Eclipsa's monitoring render is **numerically identical** to the B1
+result, on every active channel:
+
+| ch | speaker | peak dBFS | rms dBFS | B1 baseline |
+|---|---|---|---|---|
+| 3 | C | −30.74 | −33.77 | identical |
+| 5 | Ls | −27.75 | −30.77 | identical |
+| 6 | Rs | −27.75 | −30.77 | identical |
+| 7 | Lrs | −26.24 | −29.26 | identical |
+| 8 | Rrs | −26.24 | −29.26 | identical |
+| 1, 2, 4, 9–12 | | silent | silent | identical |
+
+That is the property Design B was chosen for: the capture tap only reads the
+buffer, so obr/libspatialaudio and the monitoring UI behave exactly as before.

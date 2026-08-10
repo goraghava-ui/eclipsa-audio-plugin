@@ -56,6 +56,12 @@ AudioElementPluginProcessor::AudioElementPluginProcessor()
                                   &audioElementSpatialLayoutRepository_);
 
   audioProcessors_.push_back(std::make_unique<RemappingProcessor>(this, false));
+#if FRIDAY_KALA_EXPORT
+  // FRIDAY Bridge B2: tap the object BEFORE it is panned. Everything after
+  // this line is Eclipsa's untouched monitoring chain — the tap only reads.
+  audioProcessors_.push_back(std::make_unique<FridayObjectCaptureProcessor>(
+      &audioElementSpatialLayoutRepository_, &automationParametersTreeState));
+#endif
   audioProcessors_.push_back(std::make_unique<Panner3DProcessor>(
       this, &audioElementSpatialLayoutRepository_,
       &automationParametersTreeState));

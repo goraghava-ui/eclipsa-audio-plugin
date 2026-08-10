@@ -112,6 +112,40 @@ option(CI_TEST OFF)
 option(JUCE_COPY_PLUGIN_AFTER_BUILD "Automatically copy built plugins to standard locations after build" ON)
 
 #====================================================================
+# FRIDAY Bridge — KALA export path (B2, gate GA)
+#====================================================================
+# ON in this fork: the .iamf deliverable is rendered AND encoded by KALA from
+# captured objects, so Bridge output can null against FRIDAY Studio's. OFF
+# restores upstream behaviour exactly (iamf-tools encoding Eclipsa's bed).
+# Eclipsa's monitoring path is unaffected either way.
+option(FRIDAY_KALA_EXPORT "Route the IAMF deliverable through KALA (kala-cabi)" ON)
+
+if (FRIDAY_KALA_EXPORT)
+    if (NOT DEFINED KALA_CABI_DIR)
+        set(KALA_CABI_DIR "${CMAKE_SOURCE_DIR}/../kala-engine" CACHE PATH
+                "kala-engine checkout providing kala-cabi")
+    endif ()
+    set(_KALA_CABI_INCLUDE "${KALA_CABI_DIR}/kala-cabi/include")
+    find_library(KALA_CABI_LIBRARY
+            NAMES kala_cabi
+            HINTS "${KALA_CABI_DIR}/target/release" "${KALA_CABI_DIR}/target/debug"
+            NO_DEFAULT_PATH)
+    if (NOT EXISTS "${_KALA_CABI_INCLUDE}/kala_cabi.h" OR NOT KALA_CABI_LIBRARY)
+        message(FATAL_ERROR
+                "FRIDAY_KALA_EXPORT is ON but kala-cabi was not found.\n"
+                "  looked for: ${_KALA_CABI_INCLUDE}/kala_cabi.h\n"
+                "              libkala_cabi in ${KALA_CABI_DIR}/target/{release,debug}\n"
+                "Build it with:  cargo build --release -p kala-cabi\n"
+                "or point -DKALA_CABI_DIR at the kala-engine checkout.")
+    endif ()
+    message(STATUS "FRIDAY KALA export: ${KALA_CABI_LIBRARY}")
+    add_library(kala_cabi INTERFACE)
+    target_include_directories(kala_cabi INTERFACE "${_KALA_CABI_INCLUDE}")
+    target_link_libraries(kala_cabi INTERFACE "${KALA_CABI_LIBRARY}")
+    target_compile_definitions(kala_cabi INTERFACE FRIDAY_KALA_EXPORT=1)
+endif ()
+
+#====================================================================
 # Testing
 #====================================================================
 if (CI_TEST OR INTERNAL_TEST)

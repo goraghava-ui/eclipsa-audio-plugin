@@ -35,6 +35,10 @@ END_JUCE_MODULE_DECLARATION
 #include "audioelementplugin_publisher/AudioElementPluginDataPublisher.h"
 #include "audioelementplugin_publisher/MessagingThread.h"
 #include "channel_monitor/ChannelMonitorProcessor.h"
+#if FRIDAY_KALA_EXPORT
+#include "friday/FridayObjectCaptureProcessor.h"
+#include "friday/FridayObjectTransport.h"
+#endif
 #include "file_output/FileOutputProcessor.h"
 #include "file_output/FileOutputProcessor_PremierePro.h"
 #include "file_output/WavFileOutputProcessor.h"
