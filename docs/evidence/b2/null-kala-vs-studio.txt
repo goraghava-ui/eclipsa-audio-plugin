@@ -1,0 +1,24 @@
+
+  A: kala.iamf
+  B: ref-out/B2_ref.iamf
+  96000 frames, 12 ch @ 48 kHz
+
+   ch name   A rms dBFS  B rms dBFS  max|delta| dBFS
+    1 L          -16.00      -16.00             -inf
+    2 R            -inf        -inf             -inf
+    3 C            -inf        -inf             -inf
+    4 LFE          -inf        -inf             -inf
+    5 Ls           -inf        -inf             -inf
+    6 Rs           -inf        -inf             -inf
+    7 Lrs          -inf        -inf             -inf
+    8 Rrs          -inf        -inf             -inf
+    9 TFL          -inf        -inf             -inf
+   10 TFR          -inf        -inf             -inf
+   11 TRL          -inf        -inf             -inf
+   12 TRR          -inf        -inf             -inf
+
+  worst channel: TRR (ch12) at -inf dBFS
+  sample-exact:  True
+
+  GATE GA (-90 dBFS): PASS
+

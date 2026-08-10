@@ -162,9 +162,9 @@ failure when the spatial maths is in fact identical.
 |---|---|
 | 1. Map + design | ✅ done — this document |
 | 2. Studio headless reference | ✅ done — see §7 |
-| 3. kala-cabi .so + null vs reference | in progress |
+| 3. kala-cabi .so + null vs reference | ✅ **done — byte-identical, see §8** |
 | 4. Bridge swap | ⏸ **blocked on owner approval of Design B** |
-| 5. Null harness | partial — kala-cabi vs Studio first |
+| 5. Null harness | ✅ built and validated on the kala-cabi ↔ Studio pair (§9); re-runs unchanged against `bridge.iamf` once step 4 lands |
 | 6. B1 regression with export ON | ⏸ blocked on step 4 |
 
 ## 7. Step 2 result — Studio stands headless on this bench
@@ -193,3 +193,99 @@ element, `loudspeaker_layout` 7 (7.1.4), one mix presentation. Its master
 `B2_ref_714.wav` puts **all** energy in ch1 (L) at peak −12.99 / rms
 −16.00 dBFS and silence elsewhere — correct for az +30°, which is exactly the
 L speaker (`M+030 = L`), so VBAP gives that one speaker unity gain.
+
+---
+
+## 8. Step 3 result — the seam is proven, and it is exact
+
+`kala-cabi` now carries a session API over the C ABI — the shape the Bridge
+export path will call:
+
+```
+kala_session_new(48000, "7.1.4")
+kala_session_add_object(mono, frames, az_deg, el_deg, spread, gain_db)   xN
+kala_session_render()
+kala_session_normalize(target_lkfs, &applied_gain_db)
+kala_session_encode(bit_depth, frame_len, language, label, &buf, &len)
+kala_session_free()
+```
+
+Built as `libkala_cabi.so` (the crate also emits a staticlib for the MSVC
+path). Header `kala-cabi/include/kala_cabi.h` is kept in lockstep by the
+crate's `header_matches_exports` test, now covering the seven new symbols.
+
+A C driver (`docs/evidence/b2/kala_cabi_test.c`) exercises the ABI through
+nothing but the public header. It first runs negative tests — non-48 kHz
+rejected, non-7.1.4 layout rejected, null PCM rejected, encode-before-render
+refused, add-object-after-render refused, `free(NULL)` a no-op — then renders
+the same input Studio was given.
+
+**Result: byte-identical output.**
+
+```
+17f60f17600c410f010716d2941418d08bf25a8efa9fda9090db4ba7d443d029  kala.iamf     (kala-cabi, via C)
+17f60f17600c410f010716d2941418d08bf25a8efa9fda9090db4ba7d443d029  B2_ref.iamf   (studio_cli export)
+```
+
+Both 3,458,212 bytes. Intermediate agreement, which is what makes the result
+trustworthy rather than a coincidence:
+
+| Quantity | kala-cabi (C) | Studio |
+|---|---|---|
+| Raw render, active channel | ch1 / L only | ch1 / L only |
+| Raw render peak / rms | −18.00 / −21.01 dBFS | −18.00 / −21.01 dBFS |
+| Normalisation gain | **+5.010 dB** | **+5.0 dB** (reported) |
+| Encoded size | 3,458,212 B | 3,458,212 B |
+
+az +30° is exactly the L speaker, so VBAP gives that one speaker unity and
+everything else zero — the render being confined to ch1 is the correct answer,
+not a degenerate one.
+
+This isolates the seam **before any Bridge code is touched**: whatever happens
+in step 4, the KALA side is not the variable.
+
+## 9. Step 5 — the null harness
+
+`docs/evidence/b2/null_harness.py`. FFmpeg — an independent IAMF
+implementation, so neither side is graded by its own encoder — decodes each
+file's seven substreams (`-map 0:a:i`) and they are reassembled into SMPTE
+order via `SUBSTREAM_SMPTE_714 = ((0,1),(4,5),(6,7),(8,9),(10,11),(2,),(3,))`.
+Per-substream placement matters: a whole-file energy check would hide a
+channel-mapping mistake, which is precisely the class of bug this gate exists
+to catch.
+
+Note FFmpeg's default stream selection on an `.iamf` yields the **stereo**
+mix presentation, not 7.1.4 — comparing that would silently test the wrong
+thing.
+
+Run on the step-3 pair:
+
+```
+   ch name   A rms dBFS  B rms dBFS  max|delta| dBFS
+    1 L          -16.00      -16.00             -inf
+    2 R            -inf        -inf             -inf
+    …          (ch3–12 all silent on both sides, delta -inf)
+
+  worst channel: -inf dBFS      sample-exact: True
+  GATE GA (-90 dBFS): PASS
+```
+
+The harness takes `--gate-db` (default −90) and exits non-zero on failure, so
+it drops straight into CI. Against `bridge.iamf` it runs unchanged.
+
+## 10. What is needed from the owner
+
+Approval of **Design B** (§2) before step 4. The specific decision is the
+object-audio transport, since the existing ZeroMQ channel carries metadata
+only:
+
+| Option | Trade-off |
+|---|---|
+| Second ZMQ topic on the existing socket | Reuses proven plumbing; adds serialisation to the audio thread — needs a lock-free hand-off to a sender thread to stay RT-safe |
+| Sibling ZMQ socket, audio only | Cleaner separation, same RT concern, one more port to manage |
+| Shared-memory ring per audio element | Best RT behaviour, no copies; most new code, and lifetime/cleanup across plugin instances is fiddly |
+
+Recommendation: **lock-free SPSC ring on the audio thread feeding a second ZMQ
+topic from a worker thread** — it keeps `processBlock` allocation-free and
+lock-free (KALA's own RT rule, `CLAUDE.md` §3) while reusing the transport that
+already works between these two plugins.
