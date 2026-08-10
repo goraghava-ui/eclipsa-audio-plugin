@@ -174,9 +174,26 @@ install -D -m 0755 \
 # submodules, so --recurse-submodules is required.
 log "libear"
 clone_at https://github.com/ebu/libear libear "$LIBEAR_COMMIT" --recurse
+
+# libear's find_package(Boost 1.57 REQUIRED) is headers-only (optional,
+# variant, math, algorithm/clamp, make_unique). Rather than add a system
+# package, fetch the same Boost version Eclipsa already uses. Note it must be
+# the CLASSIC source tarball: the boost-*-cmake.tar.gz release has a modular
+# layout (libs/*/include/boost/...) that CMake's legacy FindBoost cannot
+# resolve, and libear calls find_package in MODULE mode.
+BOOST_VER=1_86_0
+BOOST_DIR="$BUILD_ROOT/boost_${BOOST_VER}"
+if [ ! -d "$BOOST_DIR/boost" ]; then
+    log "fetching Boost ${BOOST_VER} headers"
+    curl -fL -o "$BUILD_ROOT/boost_${BOOST_VER}.tar.gz" \
+        "https://archives.boost.io/release/1.86.0/source/boost_${BOOST_VER}.tar.gz"
+    tar xzf "$BUILD_ROOT/boost_${BOOST_VER}.tar.gz" -C "$BUILD_ROOT"
+fi
+
 cmake -S "$BUILD_ROOT/libear" -B "$BUILD_ROOT/libear-build" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-    -DBUILD_SHARED_LIBS=OFF -DEAR_UNIT_TESTS=OFF -DEAR_EXAMPLES=OFF
+    -DBUILD_SHARED_LIBS=OFF -DEAR_UNIT_TESTS=OFF -DEAR_EXAMPLES=OFF \
+    -DBOOST_ROOT="$BOOST_DIR" -DBoost_NO_SYSTEM_PATHS=ON
 cmake --build "$BUILD_ROOT/libear-build" -j "$JOBS"
 install -D -m 0644 "$(find "$BUILD_ROOT/libear-build" -name 'libear.a' | head -1)" \
     "$REPO_ROOT/third_party/libear/lib/linux/libear.a"
