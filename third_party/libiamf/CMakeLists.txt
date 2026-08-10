@@ -67,6 +67,21 @@ if (NOT libiamf_POPULATED)
                 "${LIBIAMF_CODEC_PATH}/ogg.lib"
                 DESTINATION "${libiamf_SOURCE_DIR}/code/dep_codecs/lib/"
         )
+    elseif (UNIX)
+        # FRIDAY Bridge — Linux.
+        #
+        # The archives upstream ships in dep_codecs/lib are already x86-64 ELF,
+        # so unlike the macOS branch there is nothing to swap in. What we DO
+        # change is fdk-aac: the Fraunhofer FDK AAC licence sits outside the
+        # FRIDAY MIT/Apache/BSD firewall (see CLEAN-ROOM-LOG.md §2 and the
+        # KALA engine's LICENSE-POLICY.md). Removing the archive before
+        # configure makes libiamf's CODEC_CAP probe fail to find it, so
+        # CONFIG_AAC_CODEC is never defined and no FDK object code is linked.
+        #
+        # Consequence, by design: this build cannot decode AAC-substream IAMF.
+        # Opus and FLAC (both BSD) stay enabled.
+        file(REMOVE "${libiamf_SOURCE_DIR}/code/dep_codecs/lib/libfdk-aac.a")
+        message(STATUS "libiamf: fdk-aac removed — firewall-clean build (no AAC substreams)")
     endif ()
 
     # Build libiamf
@@ -91,7 +106,20 @@ endif ()
 # Extra linking for ogg (Mac/Linux only)
 # Windows is already handled explicitly above with full paths
 if (TARGET iamf AND NOT WIN32)
-    target_link_libraries(iamf ogg)
+    if (APPLE)
+        target_link_libraries(iamf ogg)
+    else ()
+        # Linux: there is no vendored libogg.a to copy in (upstream ships one
+        # only under lib/macos), so resolve it from the system. Fail with the
+        # package name rather than a bare "cannot find -logg" at link time.
+        find_library(ECLIPSA_OGG_LIBRARY NAMES ogg)
+        if (NOT ECLIPSA_OGG_LIBRARY)
+            message(FATAL_ERROR
+                    "FRIDAY Bridge: libogg not found. Install it:\n"
+                    "  sudo apt install libogg-dev")
+        endif ()
+        target_link_libraries(iamf ${ECLIPSA_OGG_LIBRARY})
+    endif ()
 endif ()
 
 # Include dirs
