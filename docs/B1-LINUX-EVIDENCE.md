@@ -6,14 +6,30 @@ gcc 15.2.0, cmake 4.2.3, ninja 1.13.2 · **Branch:** `linux-port`
 First successful build of the Eclipsa plugins on Linux. Upstream supports
 macOS and Windows only, so nothing here has a precedent to compare against.
 
-## Scorecard
+## Scorecard — **B1-Linux PASSED**
 
 | B1 criterion | Result |
 |---|---|
 | VST3 builds | ✅ **PASS** — both plugins compile and link |
 | Installs to `~/.vst3` | ✅ **PASS** |
 | REAPER plugin scan is clean | ✅ **PASS** — both scanned, both instantiate |
-| Audio passes through the renderer plugin | ⚠️ **NOT PROVEN** — see §4 |
+| Audio flows panner → renderer, non-silent output | ✅ **PASS** — see §4 |
+
+### The audio gate, corrected
+
+The original wording — *"audio passes through the renderer plugin on a test
+track"* — does not describe this software. `rendererplugin/CMakeLists.txt:61`
+sets `JucePlugin_IsSynth=1`, and the renderer is not an insert effect: it is the
+monitoring/master-position endpoint that renders **Audio Elements** published by
+`AudioElementPlugin` instances. A renderer inserted on an audio track will
+output silence no matter how healthy the build is, so the old wording could
+never pass and would have failed a working plugin.
+
+**Gate as now defined:** a REAPER project with a source track carrying a real
+test signal + the Audio Element Plugin, the Renderer on a separate
+monitoring-position track, the source routed into it, and a rendered master
+that is **non-silent with plausible spatial content** — verified against a
+negative control that removes only the renderer.
 
 ## 1. Build
 
@@ -81,39 +97,111 @@ fx name: VST3: Eclipsa Audio Renderer (Eclipsa Project)
 fx enabled: true
 ```
 
-## 4. Audio pass-through — NOT PROVEN
+## 4. Audio gate — PASSED
 
-Headless render harness (`reaper -nosplash -new <script>.lua`, render via
-`Main_OnCommand(41824)`), source = 12 ch / 24 bit / 48 kHz, 997 Hz at
-−18 dBFS in channels 1–2 only, ten channels silent — the same signal the KALA
-Phase 0 conformance test uses.
+Headless harness: `reaper -nosplash -new docs/evidence/b1-linux/b1_gate.lua`,
+render via `Main_OnCommand(41824)`. Source signal = 12 ch / 24 bit / 48 kHz,
+997 Hz at −18 dBFS in channels 1–2 only, ten channels digitally silent — the
+same signal the KALA Phase 0 conformance test uses.
 
-| Render | Output |
+### Harness validation first
+
+The harness itself was proved to carry audio *before* any plugin claim, as a
+no-FX control. It reproduces the input exactly:
+
+| ch | peak dBFS | rms dBFS |
+|---|---|---|
+| 1 | −18.00 | −21.01 |
+| 2 | −18.00 | −21.01 |
+
+(An earlier run of this control produced no file at all. That was an artefact of
+launching REAPER backgrounded from a compound shell command — a race, not a
+REAPER or plugin problem. Run the harness **synchronously**.)
+
+### The gate run
+
+Topology: renderer track created **first** so it binds `tcp://localhost:5555`
+before any panner connects; source track routed into it by a 12-channel send
+with `B_MAINSEND=0`, so the dry source physically cannot reach the master. Any
+audio in the render therefore came out of the renderer.
+
+| Render | Result |
 |---|---|
-| Renderer plugin on the track | 12 ch, 2.000 s, **all channels silent** |
-| Audio Element (panner) on the track | 12 ch, 2.000 s, **all channels silent** |
-| **No FX (control)** | **no file produced — harness unvalidated** |
+| **gate.wav** — panner + renderer | ✅ **NON-SILENT** |
+| **negctl.wav** — identical project, renderer removed | ✅ silent, as required |
 
-**The silence is not attributable to the plugins.** The control run — the one
-that would prove the harness passes audio at all — did not render a file, and
-did not reproduce across attempts. Without a working baseline, "plugin outputs
-silence" and "harness never fed it audio" are indistinguishable.
+`gate.wav`, 12 ch / 24 bit / 48 kHz / 2.000 s:
 
-There is also a design reason to expect silence from the *renderer* in this
-configuration: `rendererplugin/CMakeLists.txt:61` sets
-**`JucePlugin_IsSynth=1`**, so JUCE gives it no audio input bus. Eclipsa's
-renderer is not an insert effect — it receives audio from AudioElementPlugin
-instances over the project's internal transport (ZeroMQ), not from the track it
-sits on. "Audio passes through the renderer on a test track" may therefore be
-the wrong shape of test for this architecture.
+| ch | speaker | peak dBFS | rms dBFS |
+|---|---|---|---|
+| 3 | C | −30.74 | −33.77 |
+| 5 | Ls | −27.75 | −30.77 |
+| 6 | Rs | −27.75 | −30.77 |
+| 7 | Lrs | −26.24 | −29.26 |
+| 8 | Rrs | −26.24 | −29.26 |
+| 1, 2, 4, 9–12 | L, R, LFE, heights | silent | silent |
 
-**Next session, in order:**
-1. Fix the control: get a no-FX render to produce a non-silent file. Until that
-   works nothing else here means anything.
-2. If the control passes and the panner still outputs silence, that is a real
-   defect — debug the panner's bus layout on Linux.
-3. Re-frame the renderer test to match the architecture: panner on an audio
-   track, renderer on a separate track, then check the renderer's output.
+**Plausibility.** The panner's default object position is centre
+(X = Y = Z = 0), and the output is exactly what a centre-placed object should
+produce: energy in C plus a symmetric spread across the four surrounds, L/R
+pair matched to within 0.00 dB, no LFE and no height content. Summed output
+power is ≈ −23.5 dBFS against a −18.0 dBFS input — about 5.5 dB of panning and
+gain-normalisation loss, the right order for a VBAP spread. This is a rendered
+spatial image, not a pass-through and not noise.
+
+```
+sha256  e82e86e8f1e6f0ccbe5d657a462731352f3f1fd2f8071e0ac57b1f697747992d  gate.wav
+sha256  23e51d7556ca41170cab25d37c0daf9ff70255a4c560465e7803cd3983a39b0c  negctl.wav
+sha256  0aba237ede114cb5b5ecc132b6782476936e40c0ca7e751da9c3449b66f3bf88  ctrl3.wav
+sha256  94d9b5d7133002f857f120581b93fd97885eed4041f18517f395197c3839402f  test-714.wav
+```
+
+### What made it work: authored plugin state
+
+Out of the box the panner publishes nothing. `AudioElementPluginProcessor`
+gates all its work on `firstOutputChannel >= 0`, which is initialised to −1 and
+only set from the **Audio Element Spatial Layout** repository — i.e. from the
+GUI act of creating an Audio Element in the renderer and assigning the panner to
+it. Headlessly that assignment has to be authored.
+
+Both plugins store state as **plain XML inside the VST3 chunk**, so it can be
+written directly (`docs/evidence/b1-linux/rewrite_chunk.py`). Chunk framing is
+`<u32 payload_len><u32 1>"VC2!"<u32 xml_len><xml><tail>`; rewriting the XML
+means recomputing the first and third fields.
+
+Renderer — add the Audio Element and set the room layout:
+
+```xml
+<room_setup speaker_layout="7.1.4" …/>
+<audio_elements>
+  <audio_element id="a1b2c3d4e5f6470880b1c2d3e4f50011" name="AE1"
+                 description="" channel_config="7" first_channel="0"/>
+</audio_elements>
+```
+
+Panner — point at the same element and enable panning:
+
+```xml
+<audio_element_spatial_layout_repository_state …
+    audio_element_id="a1b2c3d4e5f6470880b1c2d3e4f50011"
+    first_channel="0" layout="7" layout_selected="1" panning_enabled="1"/>
+```
+
+`channel_config`/`layout` `7` is `k7Point1Point4`
+(`common/substream_rdr/substream_rdr_utils/Speakers.h:140`). The two ids must
+match — that is the whole binding between panner and renderer.
+
+Note `PannerMute` is *not* a mute: `ParameterMetaData.h:30` maps `unmuteId` to
+the string `"PannerMute"`, so its default `1.0 (On)` means **unmuted**.
+
+### Open defect found while doing this
+
+**REAPER segfaults on exit whenever the Renderer plugin was instantiated**
+(`SIGSEGV`, sometimes `SIGABRT`, always *after* the render completes and the
+project is saved). The negative control, which differs only in not loading the
+renderer, exits cleanly with status 0. Renders are unaffected, but this is a
+real Linux-side shutdown bug in the renderer — most likely its ZeroMQ SUB
+socket teardown. Filed here rather than fixed; it does not block B1.
 
 ## 5. Bench caveat — the sysroot
 

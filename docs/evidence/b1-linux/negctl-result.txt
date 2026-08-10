@@ -1,0 +1,7 @@
+=== B1-Linux audio gate ===
+renderer fx=-1
+source items=1
+panner fx=0
+panner state applied=true len=992
+send created idx=0
+rendered; proj len=2.0

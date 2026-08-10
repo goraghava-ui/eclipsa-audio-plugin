@@ -1,0 +1,4 @@
+=== variant: fx='NONE' out='ctrl3' ===
+items=1
+no FX (control)
+rendered; proj len=2.0
