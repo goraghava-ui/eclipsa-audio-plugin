@@ -292,7 +292,7 @@ already works between these two plugins.
 
 ---
 
-## 11. Step 4 — implemented, not yet demonstrated end to end
+## 11. Step 4 — implemented and demonstrated end to end
 
 Design B is built and compiles into both VST3 plugins with
 `FRIDAY_KALA_EXPORT=ON` (default in this fork; `OFF` restores upstream exactly).
@@ -317,41 +317,87 @@ FileOutputProcessor.cpp initializeFileExport 143  Beginning .iamf file export
 KalaIamfWriter.cpp open 43                        KALA export path armed: …/bridge.iamf
 ```
 
-**What does not:** the export never finalises here, so **no `bridge.iamf` is
-produced and gate GA is NOT claimed.**
+### The four defects between "arms" and "nulls"
 
-Root cause is upstream's finalisation trigger, not the KALA code.
+Getting from an armed path to a file that nulls took four fixes, three of them
+in this fork's own code. Recorded because each is a trap for anyone building an
+offline capture in a plugin host.
+
+**1. No audio device → the export never finalises (bench, no code change).**
 `FileOutputProcessor::setNonRealtime` arms on `true` and finalises on `false`,
-and a host only issues `false` when it next returns to realtime. This bench has
-no working audio device — JACK is not running and REAPER falls back to nothing —
-so the transport never rolls, `setNonRealtime(false)` is never delivered, and
-`closeFileExport` is never called. Driving `OnPlayButton`/`OnStopButton` from
-ReaScript does not help for the same reason.
+and a host only issues `false` when it returns to realtime. With no device the
+transport never rolls, so `closeFileExport` never runs. REAPER's own Dummy
+Audio driver fixes it with no hardware and no JACK — the selector is
+`linux_audio_mode=2` in `reaper.ini`, found by probing 0–4 and reading back
+`GetAudioDeviceInfo("MODE")`:
 
-A `releaseResources()` safety net was added (guarded by `FRIDAY_KALA_EXPORT`, so
-upstream semantics are untouched) to finalise any export still open when JUCE
-tears the processor down. It does not fire before the harness's timeout either,
-and the session now hangs at shutdown rather than reaching it.
+| `linux_audio_mode` | device | `Audio_IsRunning()` |
+|---|---|---|
+| 0, 1, 4 | — | 0 |
+| **2** | **Dummy Audio** | **1** |
+| 3 | PulseAudio | 1 |
 
-### To finish this, in order
+With the device up, `OnPlayButton` moves the transport, `setNonRealtime(false)`
+arrives, and the existing code completes. The guarded `releaseResources()`
+safety net stays as a belt-and-braces path for hosts that tear down without
+returning to realtime.
 
-1. **Give REAPER a working audio device** (ALSA on the X-Fi, or a dummy device).
-   That alone should let `setNonRealtime(false)` arrive and the existing code
-   complete — it is the smallest change and touches no plugin code.
-2. If that is not wanted on the bench, add an explicit finalise trigger that
-   does not depend on the host transport — e.g. a `FileExport` repository flag
-   the harness can set, which is also the honest fix for any offline/CI export.
-3. Then run the null harness (§9) against `bridge.iamf` unchanged.
+**2. The receiver bound too late, losing 77% of the capture.** `ObjectReceiver`
+used to bind when an export armed. ZeroMQ's PUB/SUB handshake costs ~100 ms and
+an offline bounce of a 2 s project is *finished* in ~200 ms, so the head of the
+stream went to a socket with no subscriber and PUB dropped it — silently, with
+no sequence gap, because the first block that did arrive set the baseline. The
+result was a 0.46 s file from a 2 s render. Fixed by making the receiver a
+process-wide singleton (`friday::sharedObjectReceiver()`) that binds in
+`prepareToPlay`, i.e. when the renderer plugin loads; `open()` now only
+`reset()`s the accumulator. The fixed 250 ms drain was replaced by a
+settle-based one (quiet for 150 ms, hard cap 5 s), since how long the tail takes
+depends on how fast the host bounced.
+
+**3. Capture was not bounded by the bounce.** The tap published on every block,
+so once the host returned to realtime and the exporter was still draining, the
+object kept growing — a 2 s render encoded as 2.12 s. The tap now publishes only
+while the host is non-realtime. `AudioElementPluginProcessor` holds its
+sub-processors in a plain `std::vector`, **not** an `AudioProcessorGraph`, so
+nothing forwarded the transition: it needed an explicit
+`AudioElementPluginProcessor::setNonRealtime` override that calls the base and
+then the tap. (Calling the base matters — skipping it leaves JUCE's own
+`isNorealtime()` flag stale.)
+
+**4. The host's silent flush past the render bounds.** REAPER hands the plugins
+~0.28 s of digital silence after a 2 s bounce and discards it from its own
+output. Left in, it lengthened the deliverable *and* moved the BS.1770
+integrated measurement — the 400 ms gating blocks straddling the boundary drop
+under the relative gate — which showed up as a **+0.175 dB** mastering-gain
+error against Studio (peak 0.228694 vs 0.224137). `trimTrailingSilence()` cuts
+it, equally across all objects so relative timing is preserved.
+
+*Limitation from fix 4:* material that deliberately ends in silence is shortened
+by that silence. The correct fix is to carry the host playhead position in the
+wire header and cut at the render bounds; deferred, and the only remaining
+known gap in the capture contract.
+
+### Verified end to end
+
+```
+KalaIamfWriter.cpp open 46    KALA export path armed: /data/build/b2/bridge.iamf
+KalaIamfWriter.cpp close 112  KALA export captured 107 block(s), 109568 frames,
+                              trimmed to 96000; object[0] az=30.173517 el=0.000000
+                              spread=0.000000 gain=0.000000
+KalaIamfWriter.cpp close 188  KALA export wrote 3458222 bytes from 1 object(s),
+                              gain 5.010230 dB
+```
 
 ### Also outstanding
 
-- The shutdown hang above needs a real diagnosis. The publisher's post-shutdown
-  drain was made bounded (an unbounded "drain until empty" can spin forever
-  while the audio thread is still pushing, so the join in `~ObjectPublisher`
-  never returns), but that did not clear it. Note the pre-existing renderer
-  crash at exit — `boost::log::core::~core()` in an atexit handler, confirmed
-  by gdb and recorded in `docs/B1-LINUX-EVIDENCE.md` §4 — is a separate,
-  older defect present before any B2 work.
+- The renderer still crashes at process exit — `boost::log::core::~core()` in an
+  atexit handler, confirmed by gdb and recorded in `docs/B1-LINUX-EVIDENCE.md`
+  §4. Pre-existing, present before any B2 work, and it happens *after* the file
+  is written and closed. The earlier shutdown *hang* is gone: it was the harness
+  saving over an existing `b2gate.rpp` and REAPER waiting on an invisible
+  overwrite modal. The harness now deletes every artefact it produces up front,
+  which also fixes REAPER silently skipping a render whose output already
+  exists.
 - The object wire format carries one position per block and the receiver keeps
   the last one. Fine for the static pan the gate uses; automation needs
   per-block positions preserved, matching Studio's block-ramped render.
@@ -373,3 +419,90 @@ result, on every active channel:
 
 That is the property Design B was chosen for: the capture tap only reads the
 buffer, so obr/libspatialaudio and the monitoring UI behave exactly as before.
+
+## 13. Step 5 result — the null, and what "the same pan" had to mean
+
+`bridge.iamf` (Bridge, KALA export path, headless REAPER bounce) against a
+FRIDAY Studio master of the same object, decoded by FFmpeg — an implementation
+neither side owns — and reassembled into SMPTE 7.1.4:
+
+```
+  96000 frames, 12 ch @ 48 kHz
+
+   ch name   A rms dBFS  B rms dBFS  max|delta| dBFS
+    1 L          -16.00      -16.00             -inf
+    5 Ls         -65.11      -65.11          -138.47
+    2,3,4,6-12    -inf        -inf             -inf
+
+  worst channel: Ls (ch5) at -138.47 dBFS
+  GATE GA (-90 dBFS): PASS
+```
+
+**−138.47 dBFS worst case, against a −90 dBFS gate.** Eleven of twelve channels
+are bit-identical (`-inf` delta); Ls differs by exactly one 24-bit LSB
+(−138.47 dBFS *is* the 24-bit LSB), from the object azimuth crossing the seam as
+`float32` while Studio reads a JSON `double`.
+
+Artefacts:
+
+| file | sha256 |
+|---|---|
+| `bridge.iamf` | `04f2b28ccaaef80eea18cbc5c68c2b5154c9638d1c4615334ea706ec835177ed` |
+| Studio master, matched azimuth | `a9e7d69c0800ce212fc9aecc77cfb27eb4d1bbdb0969f732a621e296f0471d02` |
+
+### The reference had to be regenerated, and why that is not a fudge
+
+The first null run FAILED at −62.10 dBFS on Ls. That was a real signal, not
+noise: the reference had been authored at **azimuth 30.000°**, but the object
+Bridge actually captured sits at **30.173517°**. The panner's X/Y/Z parameters
+are integer-quantised over [−50, +50], so the DAW cannot express the position
+that lands on exactly 30° — asking for it gives x = −25, y ≈ 43, and
+`atan2` turns that into 30.173517°. The 0.17° offset spills VBAP energy into Ls
+at −49 dB relative to L, and the reference had no Ls energy at all to null it
+against.
+
+The gate is "Bridge IAMF == Studio IAMF **for the same pan**". Comparing a
+30.17° render against a 30.00° reference is not the same pan, so the reference
+was re-exported from `studio_cli` at azimuth 30.173517 — the value read out of
+Bridge's own capture log, not a value chosen to make the number look good. Both
+sides then agree on Ls to one LSB, which is the point: the 0.17° offset now
+appears *identically* in both files.
+
+The original 30.000° comparison is kept as
+`/data/build/b2/null-bridge-vs-studio-az30.txt` so the difference between "wrong
+renderer" and "different pan" stays on the record.
+
+Studio confirms the mastering gain independently: `+5.0 dB` applied to reach
+−16.00 LKFS, against Bridge's `5.010230 dB`. The §5 loudness-normalisation
+finding therefore holds all the way through the seam.
+
+## 14. B2 gate table
+
+Run 2026-08-12 on the Linux bench, `FRIDAY_KALA_EXPORT=ON`, REAPER 7.78 headless
+with the Dummy Audio device.
+
+| # | Gate | Criterion | Result | Evidence |
+|---|---|---|---|---|
+| B1-1 | Linux build | both VST3s build from source | **PASS** | `docs/B1-LINUX-EVIDENCE.md` §1 |
+| B1-2 | Install + scan | REAPER scans both plugins clean | **PASS** | §3 |
+| B1-3 | Audio gate | panner → ZMQ → renderer, non-silent plausible render | **PASS** | §4 |
+| B2-1 | Export-stage map | seam identified, surgery scoped | **PASS** | §1, §4 |
+| B2-2 | Studio headless | reference `.iamf` produced on this bench | **PASS** | §7 |
+| B2-3 | Seam proven in isolation | kala-cabi output == `studio_cli` output | **PASS — byte-identical** | §8, `null-kala-vs-studio.txt` |
+| B2-4 | Bridge swap | Bridge produces `bridge.iamf` through KALA | **PASS** | §11, `b2-gate-result.txt` |
+| B2-5 | **Null (gate GA)** | ≤ −90 dBFS per-channel delta vs Studio | **PASS — −138.47 dBFS** | §13, `null-bridge-vs-studio.txt` |
+| B2-6 | B1 regression, export ON | monitoring render unchanged | **PASS — identical** | §12, `b1-regression-measurements.txt` |
+
+Supporting suites: kala-engine **27 suites / 252 tests, 0 failed**;
+friday-studio **121 passed**.
+
+Deviations from PRD-v2 §6 Phase A, carried in the commit message:
+
+- The Studio reference for B2-5 is re-exported at azimuth **30.173517°**, the
+  position the DAW can actually express, not 30.000° — §13.
+- `trimTrailingSilence()` bounds the capture by trailing digital silence rather
+  than by the host's render bounds — §11, fix 4.
+- Bridge's own unit suite needed a case-sensitivity fix
+  (`IamfBufferedReader_test.cpp` → `IAMFBufferedReader_test.cpp`) before it
+  would configure on Linux at all; that is portability defect #5 of the same
+  class as the four in `docs/B1-LINUX-EVIDENCE.md`.

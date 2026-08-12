@@ -72,6 +72,13 @@ void FileOutputProcessor::prepareToPlay(const double sampleRate,
   sampleTally_ = 0;
   framesWritten_ = 0;
   sampleRate_ = sampleRate;
+
+#if FRIDAY_KALA_EXPORT
+  // Bring the object bus up now, not when an export arms. ZeroMQ's PUB/SUB
+  // handshake costs ~100 ms and an offline bounce of a short project finishes
+  // inside that, so binding at arm time loses the head of the capture.
+  friday::sharedObjectReceiver().start();
+#endif
 }
 
 void FileOutputProcessor::setNonRealtime(const bool isNonRealtime) noexcept {

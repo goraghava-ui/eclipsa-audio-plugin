@@ -31,7 +31,10 @@ eclipsa_add_test(test_iamf_reader IAMFFileReader_test.cpp "processors;iamf")
 eclipsa_add_test(test_fileplayback_worker FilePlaybackWorker_test.cpp "processors;iamf")
 eclipsa_add_test(test_fileplayback_processor FilePlaybackProcessor_test.cpp "processors;iamf")
 eclipsa_add_test(test_fileplayback_resampler FilePlaybackResampler_test.cpp "processors;iamf")
-eclipsa_add_test(test_iamf_buffered_reader IamfBufferedReader_test.cpp "processors;iamf")
+# Portability: the file on disk is IAMFBufferedReader_test.cpp. The old spelling
+# resolves on a case-insensitive filesystem (macOS) and hard-fails configure on
+# Linux — the same class of defect as the include-path fixes in docs/BUILDING-LINUX.md.
+eclipsa_add_test(test_iamf_buffered_reader IAMFBufferedReader_test.cpp "processors;iamf")
 
 if(APPLE)
     # Demuxing tests only work on apple for now

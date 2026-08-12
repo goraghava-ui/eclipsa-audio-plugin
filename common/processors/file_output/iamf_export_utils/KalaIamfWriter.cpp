@@ -16,6 +16,7 @@
 
 #include "KalaIamfWriter.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <vector>
 
@@ -29,7 +30,7 @@ KalaIamfWriter::KalaIamfWriter(FileExportRepository& fileExportRepository,
                                int sampleRate)
     : fileExportRepository_(fileExportRepository), sampleRate_(sampleRate) {}
 
-KalaIamfWriter::~KalaIamfWriter() { receiver_.stop(); }
+KalaIamfWriter::~KalaIamfWriter() = default;
 
 bool KalaIamfWriter::open(const std::string& filename) {
   if (sampleRate_ != 48000) {
@@ -38,7 +39,9 @@ bool KalaIamfWriter::open(const std::string& filename) {
     return false;
   }
   filename_ = filename;
-  receiver_.start();
+  // start() is idempotent; the link is normally already up from prepareToPlay.
+  friday::sharedObjectReceiver().start();
+  friday::sharedObjectReceiver().reset();
   open_ = true;
   LOG_ANALYTICS(0, "KALA export path armed: " + filename);
   return true;
@@ -51,16 +54,48 @@ bool KalaIamfWriter::writeFrame(const juce::AudioBuffer<float>&) {
   return open_;
 }
 
+void KalaIamfWriter::trimTrailingSilence(
+    std::vector<friday::ObjectReceiver::Object>& objects) {
+  // A host flushes extra blocks after the render bounds -- REAPER hands the
+  // plugins ~0.28 s of digital silence past the end of a 2 s bounce and then
+  // discards it from its own output file. Left in, that silence lengthens the
+  // deliverable past the render AND shifts the BS.1770 integrated measurement
+  // (the 400 ms blocks straddling the boundary land under the relative gate),
+  // which showed up as a +0.175 dB mastering-gain error against Studio.
+  //
+  // The trim is COMMON across objects so their relative timing is untouched.
+  //
+  // Limitation: material that deliberately ends in silence is shortened by
+  // that silence. The proper fix is to carry the host playhead position in the
+  // wire header and cut at the render bounds -- BRIDGE-B2-PLAN.md §11.
+  size_t keep = 0;
+  for (const auto& o : objects) {
+    size_t last = 0;
+    for (size_t i = o.pcm.size(); i > 0; --i) {
+      if (o.pcm[i - 1] != 0.0f) {
+        last = i;
+        break;
+      }
+    }
+    keep = std::max(keep, last);
+  }
+  if (keep == 0) return;  // all silent -- leave it alone, let the caller judge
+  for (auto& o : objects) {
+    if (o.pcm.size() > keep) o.pcm.resize(keep);
+  }
+}
+
 bool KalaIamfWriter::close() {
   if (!open_) return false;
   open_ = false;
 
   // An offline bounce runs far faster than real time, so blocks are still in
-  // flight. Let them land before the render is built.
-  receiver_.drain(250);
-  receiver_.stop();
+  // flight. Let the stream go quiet before the render is built. The receiver
+  // is NOT stopped — it stays bound for the next export.
+  friday::ObjectReceiver& receiver = friday::sharedObjectReceiver();
+  receiver.drain(/*quietMs=*/150, /*maxMs=*/5000);
 
-  std::vector<friday::ObjectReceiver::Object> objects = receiver_.take();
+  std::vector<friday::ObjectReceiver::Object> objects = receiver.take();
   objectsRendered_ = objects.size();
   if (objects.empty()) {
     LOG_ERROR(0,
@@ -68,10 +103,21 @@ bool KalaIamfWriter::close() {
               "assigned to an Audio Element?");
     return false;
   }
-  if (receiver_.gaps() > 0) {
-    LOG_WARNING(0, "KALA export: " + std::to_string(receiver_.gaps()) +
+  if (receiver.gaps() > 0) {
+    LOG_WARNING(0, "KALA export: " + std::to_string(receiver.gaps()) +
                        " sequence gaps in the object stream");
   }
+  const size_t capturedFrames = objects[0].pcm.size();
+  trimTrailingSilence(objects);
+  LOG_ANALYTICS(0, "KALA export captured " +
+                       std::to_string(receiver.blocksReceived()) +
+                       " block(s), " + std::to_string(capturedFrames) +
+                       " frames, trimmed to " +
+                       std::to_string(objects[0].pcm.size()) + "; object[0] az=" +
+                       std::to_string(objects[0].az_deg) + " el=" +
+                       std::to_string(objects[0].el_deg) + " spread=" +
+                       std::to_string(objects[0].spread) + " gain=" +
+                       std::to_string(objects[0].gain_db));
 
   KalaSession* session = kala_session_new(48000, "7.1.4");
   if (session == nullptr) {

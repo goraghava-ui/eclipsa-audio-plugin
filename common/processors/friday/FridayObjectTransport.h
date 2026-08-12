@@ -157,24 +157,39 @@ class ObjectReceiver {
   ObjectReceiver();
   ~ObjectReceiver();
 
+  /// Idempotent — binds the socket and spawns the worker on first call.
   void start();
   void stop();
-  /// Block briefly so in-flight blocks land before the render is built.
-  void drain(int milliseconds);
+  /// Drop everything captured so far but keep the socket bound. This is what
+  /// an export arms with: ZeroMQ's PUB/SUB handshake costs ~100 ms, and a
+  /// bounce is finished long before that, so the link has to already be up.
+  void reset();
+  /// Wait until no new block has arrived for `quietMs`, giving up after
+  /// `maxMs`. A fixed sleep either truncates the capture or wastes time,
+  /// because how long the tail takes depends on the bounce speed.
+  void drain(int quietMs, int maxMs);
 
-  /// Snapshot of everything captured since start().
+  /// Snapshot of everything captured since the last reset().
   std::vector<Object> take();
   size_t objectCount();
   uint32_t gaps() const noexcept { return gaps_.load(std::memory_order_relaxed); }
+  uint64_t blocksReceived() const noexcept {
+    return blocks_.load(std::memory_order_relaxed);
+  }
 
  private:
   void workerLoop();
 
   std::atomic<bool> running_;
   std::atomic<uint32_t> gaps_;
+  std::atomic<uint64_t> blocks_;
   std::thread worker_;
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+/// One receiver per process: the endpoint is a single bound port, and it must
+/// come up when the renderer plugin loads rather than when an export arms.
+ObjectReceiver& sharedObjectReceiver();
 
 }  // namespace friday

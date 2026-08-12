@@ -56,9 +56,27 @@ class AudioElementPluginProcessor final : public ProcessorBase,
   static int instanceId_;  // Unique identifier for each instance of the plugin
 
   void releaseResources() override;
+
+#if FRIDAY_KALA_EXPORT
+  /// The sub-processors live in a plain vector, not an AudioProcessorGraph, so
+  /// nothing forwards the host's offline/realtime transitions to them. The
+  /// object capture tap needs them: it must publish exactly the host's bounce
+  /// and nothing either side of it. Only the tap is forwarded to — the rest of
+  /// the chain keeps upstream's behaviour.
+  void setNonRealtime(bool isNonRealtime) noexcept override {
+    // Base first — it owns the isNonRealtime() flag the wrapper and the rest
+    // of JUCE read.
+    juce::AudioProcessor::setNonRealtime(isNonRealtime);
+    if (fridayCapture_ != nullptr) fridayCapture_->setNonRealtime(isNonRealtime);
+  }
+#endif
+
   ~AudioElementPluginProcessor() override {
     // Ensure the processors are destroyed before the repositories or other
     // dependent pieces
+#if FRIDAY_KALA_EXPORT
+    fridayCapture_ = nullptr;
+#endif
     audioProcessors_.clear();
     syncClient_.disconnectClient();
   }
@@ -104,6 +122,10 @@ class AudioElementPluginProcessor final : public ProcessorBase,
  private:
   juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
   std::vector<std::unique_ptr<ProcessorBase>> audioProcessors_;
+#if FRIDAY_KALA_EXPORT
+  /// Non-owning; audioProcessors_ owns it and outlives every use.
+  FridayObjectCaptureProcessor* fridayCapture_ = nullptr;
+#endif
   ElevationListener elevationListener_;
 
   /*

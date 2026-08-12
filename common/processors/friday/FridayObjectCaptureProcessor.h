@@ -28,6 +28,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <atomic>
 #include <cmath>
 
 #include "../processor_base/ProcessorBase.h"
@@ -49,9 +50,18 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     return "FRIDAY Object Capture";
   }
 
+  /// Capture is bounded by the host's offline bounce. Without this the tail of
+  /// the stream keeps growing once the host returns to realtime and the
+  /// exporter is still draining, so the encoded file ends up longer than the
+  /// render — the object stream has to cover exactly the bounce and no more.
+  void setNonRealtime(bool isNonRealtime) noexcept override {
+    offline_.store(isNonRealtime, std::memory_order_release);
+  }
+
   void processBlock(juce::AudioBuffer<float>& buffer,
                     juce::MidiBuffer&) override {
     // AUDIO THREAD — publish() only memcpys into a preallocated ring.
+    if (!offline_.load(std::memory_order_acquire)) return;
     if (buffer.getNumChannels() < 1 || buffer.getNumSamples() < 1) return;
     if (spatialLayoutRepository_ == nullptr ||
         automationParameterTree_ == nullptr) {
@@ -120,5 +130,6 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
  private:
   AudioElementSpatialLayoutRepository* spatialLayoutRepository_;
   AudioElementParameterTree* automationParameterTree_;
+  std::atomic<bool> offline_{false};
   friday::ObjectPublisher publisher_;
 };

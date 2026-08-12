@@ -196,6 +196,30 @@ Do **not** launch REAPER backgrounded from a compound shell command — the
 script then races and may not run at all. The harness quits via
 `Main_SaveProjectEx` so the "save changes?" modal never blocks it.
 
+**Every harness must delete the artefacts it is about to write, before it
+writes them.** Two separate REAPER behaviours make a stale file look like a
+plugin bug: a render whose output file already exists is *silently skipped*
+(this is what made the first B1 control flaky), and `Main_SaveProjectEx` over
+an existing `.rpp` raises an invisible overwrite modal that hangs a headless
+run until it is killed.
+
+### Audio device (required for any export gate)
+
+An export only finalises when the host returns to realtime — see
+`BRIDGE-B2-PLAN.md` §11 — so REAPER needs a working audio device even
+headless. Neither JACK nor hardware is required; REAPER's own Dummy Audio
+driver is enough and is what this bench uses. Set it in `~/.config/REAPER/reaper.ini`:
+
+```ini
+[reaper]
+linux_audio_mode=2        ; 0,1,4 = no device · 2 = Dummy Audio · 3 = PulseAudio
+linux_audio_srate=48000
+linux_audio_bsize=1024
+```
+
+Confirm from a script with `reaper.Audio_IsRunning()` and
+`reaper.GetAudioDeviceInfo("MODE")` before trusting any export result.
+
 Both plugins need authored state before any audio flows (the panner's
 `firstOutputChannel` is −1 until an Audio Element is assigned, which is normally
 a GUI action). `docs/evidence/b1-linux/rewrite_chunk.py` writes that state

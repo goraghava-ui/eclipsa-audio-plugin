@@ -1,0 +1,12 @@
+=== B2 gate: Bridge export via KALA ===
+audio device running=1 mode=Dummy Audio srate=48000
+renderer fx=0
+renderer state applied=true
+source items=1
+panner fx=0
+panner state applied=true
+object position X=-25 Y=43 Z=0
+bounce issued
+play issued, playstate=1
+stop issued, playstate before=0 pos=2.000
+bridge.iamf exists=true

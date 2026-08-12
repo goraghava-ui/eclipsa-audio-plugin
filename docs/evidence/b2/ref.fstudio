@@ -1,0 +1,36 @@
+{
+  "friday_studio": 1,
+  "name": "B2 ref",
+  "sample_rate": 48000,
+  "target_lkfs": -16.0,
+  "language": "en",
+  "label": "B2 reference",
+  "binaural_on_headphones": true,
+  "presentations": [],
+  "video_path": "",
+  "versions": [],
+  "scene_snapshots": [],
+  "layout_trims": {},
+  "beds": [],
+  "objects": [
+    {
+      "name": "obj997",
+      "file_path": "/data/build/b2/stem997.wav",
+      "keyframes": [
+        {
+          "t": 0.0,
+          "azimuth": 30.0,
+          "elevation": 0.0,
+          "spread": 0.0,
+          "gain_db": 0.0,
+          "curve": "linear"
+        }
+      ],
+      "mute": false,
+      "binaural_mode": "mid",
+      "group": "",
+      "zone": "",
+      "snap": false
+    }
+  ]
+}

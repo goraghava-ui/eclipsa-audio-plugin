@@ -146,7 +146,7 @@ struct ObjectReceiver::Impl {
 };
 
 ObjectReceiver::ObjectReceiver()
-    : running_(false), gaps_(0), impl_(std::make_unique<Impl>()) {}
+    : running_(false), gaps_(0), blocks_(0), impl_(std::make_unique<Impl>()) {}
 
 ObjectReceiver::~ObjectReceiver() { stop(); }
 
@@ -163,14 +163,18 @@ void ObjectReceiver::start() {
     // configuration.
     return;
   }
-  {
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    impl_->objects.clear();
-    impl_->index.clear();
-    impl_->haveSeq = false;
-  }
+  reset();
   running_.store(true, std::memory_order_release);
   worker_ = std::thread([this] { workerLoop(); });
+}
+
+void ObjectReceiver::reset() {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  impl_->objects.clear();
+  impl_->index.clear();
+  impl_->haveSeq = false;
+  gaps_.store(0, std::memory_order_relaxed);
+  blocks_.store(0, std::memory_order_relaxed);
 }
 
 void ObjectReceiver::stop() {
@@ -179,11 +183,29 @@ void ObjectReceiver::stop() {
   impl_->socket.close();
 }
 
-void ObjectReceiver::drain(int milliseconds) {
+void ObjectReceiver::drain(int quietMs, int maxMs) {
   // PUB/SUB is asynchronous and an offline bounce runs far faster than real
-  // time, so blocks are still in flight when the exporter closes. Give them a
-  // moment before the render is built.
-  std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+  // time, so blocks are still in flight when the exporter closes. Wait for the
+  // stream to go quiet rather than for a fixed interval — a fixed sleep is
+  // either a truncated capture or wasted wall clock, depending on how fast the
+  // host bounced.
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(maxMs);
+  uint64_t seen = blocks_.load(std::memory_order_relaxed);
+  auto lastChange = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    const uint64_t now = blocks_.load(std::memory_order_relaxed);
+    if (now != seen) {
+      seen = now;
+      lastChange = std::chrono::steady_clock::now();
+      continue;
+    }
+    if (std::chrono::steady_clock::now() - lastChange >=
+        std::chrono::milliseconds(quietMs)) {
+      return;
+    }
+  }
 }
 
 void ObjectReceiver::workerLoop() {
@@ -232,6 +254,7 @@ void ObjectReceiver::workerLoop() {
         reinterpret_cast<const float*>(static_cast<const uint8_t*>(msg.data()) +
                                        sizeof(h));
     obj.pcm.insert(obj.pcm.end(), samples, samples + h.frames);
+    blocks_.fetch_add(1, std::memory_order_relaxed);
   }
 }
 
@@ -243,6 +266,11 @@ std::vector<ObjectReceiver::Object> ObjectReceiver::take() {
 size_t ObjectReceiver::objectCount() {
   std::lock_guard<std::mutex> lock(impl_->mutex);
   return impl_->objects.size();
+}
+
+ObjectReceiver& sharedObjectReceiver() {
+  static ObjectReceiver instance;
+  return instance;
 }
 
 }  // namespace friday

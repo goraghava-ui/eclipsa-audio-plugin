@@ -59,8 +59,12 @@ AudioElementPluginProcessor::AudioElementPluginProcessor()
 #if FRIDAY_KALA_EXPORT
   // FRIDAY Bridge B2: tap the object BEFORE it is panned. Everything after
   // this line is Eclipsa's untouched monitoring chain — the tap only reads.
-  audioProcessors_.push_back(std::make_unique<FridayObjectCaptureProcessor>(
-      &audioElementSpatialLayoutRepository_, &automationParametersTreeState));
+  {
+    auto capture = std::make_unique<FridayObjectCaptureProcessor>(
+        &audioElementSpatialLayoutRepository_, &automationParametersTreeState);
+    fridayCapture_ = capture.get();
+    audioProcessors_.push_back(std::move(capture));
+  }
 #endif
   audioProcessors_.push_back(std::make_unique<Panner3DProcessor>(
       this, &audioElementSpatialLayoutRepository_,

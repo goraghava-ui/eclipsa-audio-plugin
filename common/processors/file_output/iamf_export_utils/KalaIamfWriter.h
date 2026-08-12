@@ -25,12 +25,19 @@
 // Deliberately not streaming: the objects are accumulated for the whole export
 // and rendered in one shot at close(), which is exactly what kala-cabi's
 // session API expects and what studio_cli does offline.
+//
+// The receiver is the process-wide one (friday::sharedObjectReceiver), brought
+// up when the renderer plugin is prepared rather than when an export arms:
+// ZeroMQ's PUB/SUB handshake takes ~100 ms and an offline bounce of a short
+// project is over well inside that, so a receiver that binds at arm time
+// silently loses the head of the capture.
 
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <string>
+#include <vector>
 
 #include "../../friday/FridayObjectTransport.h"
 #include "data_repository/implementation/FileExportRepository.h"
@@ -54,11 +61,15 @@ class KalaIamfWriter {
   float appliedGainDb() const { return appliedGainDb_; }
   size_t objectsRendered() const { return objectsRendered_; }
 
+  /// Cuts the host's post-render silent flush off the capture, equally across
+  /// every object so their relative timing is preserved. Public for the tests.
+  static void trimTrailingSilence(
+      std::vector<friday::ObjectReceiver::Object>& objects);
+
  private:
   FileExportRepository& fileExportRepository_;
   int sampleRate_;
   std::string filename_;
-  friday::ObjectReceiver receiver_;
   bool open_ = false;
   float appliedGainDb_ = 0.0f;
   size_t objectsRendered_ = 0;
