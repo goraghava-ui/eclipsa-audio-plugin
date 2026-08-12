@@ -34,6 +34,7 @@
 #include "components/src/EclipsaColours.h"
 #include "components/src/friday/FridayPannerScope.h"
 #include "data_structures/src/AudioElementParameterTree.h"
+#include "data_structures/src/Elevation.h"
 #include "data_structures/src/ParameterMetaData.h"
 
 namespace {
@@ -250,6 +251,47 @@ TEST_F(ScopeFixture, a_dial_edit_moves_the_pad) {
       shot.getPixelAt(560 - px, py);
   EXPECT_LT(mirrored.getFloatRed(), 0.5f)
       << "the right-hand mirror of the orb should be empty scope";
+}
+
+// B2 follow-up: the position parameters are continuous now. While they were
+// AudioParameterInt over [-50, +50] a DAW could not express most directions —
+// asking for azimuth 30.000 gave 30.173517 — and the B2 null had to be taken
+// against a reference regenerated at whatever angle came out.
+TEST_F(ScopeFixture, the_parameters_can_hold_a_direction_exactly) {
+  for (const float wantAz : {30.0f, 0.5f, -17.25f, 123.75f}) {
+    for (const float wantEl : {0.0f, 22.5f, 47.125f}) {
+      float x = 0.0f, y = 0.0f, z = 0.0f;
+      FridayPannerScope::azimuthElevationToXyz(wantAz, wantEl, x, y, z);
+      setXyz(x, y, z);
+
+      // Read back through the parameters, which is the round trip that used to
+      // lose the fractional part.
+      float az = 0.0f, el = 0.0f;
+      FridayPannerScope::xyzToAzimuthElevation(
+          xyz(AutoParamMetaData::xPosition), xyz(AutoParamMetaData::yPosition),
+          xyz(AutoParamMetaData::zPosition), az, el);
+      EXPECT_NEAR(az, wantAz, 0.01f) << "az " << wantAz << " el " << wantEl;
+      EXPECT_NEAR(el, wantEl, 0.01f) << "az " << wantAz << " el " << wantEl;
+    }
+  }
+}
+
+TEST_F(ScopeFixture, the_parameter_range_is_unchanged_so_sessions_still_load) {
+  // A finer INTEGER scale would have been the other way to add resolution, and
+  // it would have changed what a stored number means: every saved x=43 would
+  // read back as 0.43 and every object in every existing project would move.
+  // Same range, finer type, so the stored value keeps its meaning.
+  for (const auto& id :
+       {AutoParamMetaData::xPosition, AutoParamMetaData::yPosition,
+        AutoParamMetaData::zPosition}) {
+    juce::RangedAudioParameter* p = params_->getParameter(id);
+    ASSERT_NE(p, nullptr) << id;
+    EXPECT_FLOAT_EQ(p->getNormalisableRange().start, -50.0f) << id;
+    EXPECT_FLOAT_EQ(p->getNormalisableRange().end, 50.0f) << id;
+    // Continuous: a stepped parameter reports its step count here.
+    EXPECT_EQ(p->getNumSteps(), juce::AudioProcessor::getDefaultNumParameterSteps())
+        << id << " should be continuous, not stepped";
+  }
 }
 
 TEST_F(ScopeFixture, a_non_interactive_pad_ignores_drags) {

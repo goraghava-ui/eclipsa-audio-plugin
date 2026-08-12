@@ -101,9 +101,10 @@ class Panner3DProcessor final
   Speakers::AudioElementSpeakerLayout inputLayout_;
   Speakers::AudioElementSpeakerLayout outputLayout_;
   juce::AudioBuffer<float> outputBuffer_;
-  int xPosition_ = 0;
-  int yPosition_ = 0;
-  int zPosition_ = 0;
+  // Continuous, matching the parameters — see ParameterMetaData.h.
+  float xPosition_ = 0.f;
+  float yPosition_ = 0.f;
+  float zPosition_ = 0.f;
 
   // Position caching for optimization - avoid redundant renderer updates
   int lastSetXPosition_ = -999;

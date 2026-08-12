@@ -450,6 +450,23 @@ Artefacts:
 | `bridge.iamf` | `04f2b28ccaaef80eea18cbc5c68c2b5154c9638d1c4615334ea706ec835177ed` |
 | Studio master, matched azimuth | `a9e7d69c0800ce212fc9aecc77cfb27eb4d1bbdb0969f732a621e296f0471d02` |
 
+### Superseded 2026-08-12 — the pan is exact now
+
+The parameters are continuous (see §B6-1), so the DAW can express azimuth
+30.000 and the null no longer needs a reference regenerated at a captured
+angle. Against the **original, untouched** 30.000° Studio reference:
+
+| pan | reference | worst channel | sample-exact |
+|---|---|---|---|
+| az +30.173517 (integer params, old) | regenerated at 30.173517 | −138.47 dBFS | no, 1 LSB on Ls |
+| **az +30.000000 (continuous params)** | **original `B2_ref.iamf`, unchanged** | **−inf dBFS** | **yes** |
+
+`bridge_p1.iamf` sha256 `21ff9e1b…` against reference `17f60f17…`; the decoded
+12-channel content is identical sample for sample on every channel. The account
+below is kept because it is why the reference was regenerated at the time, and
+because the diagnosis — that the DAW could not express the angle — is what led
+to fixing the parameters.
+
 ### The reference had to be regenerated, and why that is not a fudge
 
 The first null run FAILED at −62.10 dBFS on Ls. That was a real signal, not
@@ -837,3 +854,39 @@ that mode describes. Today the drag is dome for all of them, and the modes
 survive as (a) the repository state driving the elevation listener and (b) the
 contour rings the scope draws. `FridayPannerScope::radiusFraction` /
 `elevationFromRadius` are the two functions a per-mode surface would replace.
+
+
+---
+
+## §B6. Bridge polish — the three recorded follow-ups
+
+### §B6-1. Position parameters are continuous (was: B2 follow-up)
+
+X, Y and Z were `juce::AudioParameterInt` over [−50, +50] — 101 steps — so most
+directions were simply not on the grid. Asking for azimuth 30.000 gave x=−25,
+y=43 and therefore **30.173517**, which is why the B2 null had to be taken
+against a reference regenerated at that captured angle.
+
+They are now **`AudioParameterFloat` over the same [−50, +50]**.
+
+**Why float and not a finer integer scale.** A rescaled integer (hundredths
+over [−5000, +5000]) would have changed what a stored number *means*: every
+session holding x=43 would load as 0.43 and every object in every existing
+project would silently move. No version hint undoes that after the fact. Same
+range, finer type, so a saved 43 loads as 43.0 and nothing moves. Host
+automation is unaffected in both directions — automation is recorded normalised
+0..1 over an unchanged range, and the parameter IDs and version hint are
+untouched, so existing VST3 lanes stay bound and replay to the same positions.
+
+The getters had to widen too. `AudioElementParameterTree::get{X,Y,Z}Position()`
+returned **`int`**, and `Panner3DProcessor` stored them as `int`. Left alone,
+Eclipsa's own monitoring would have kept quantising while the KALA export — which
+reads the parameters' atomics directly — did not, and the two would have drifted
+apart. `ElevationListener`'s `std::round` on the dome write went for the same
+reason.
+
+**Gate: PASS, and better than asked.** A scripted REAPER pan at az +30.000
+captures `az=30.000000` (asked: ±0.01°), and the end-to-end null against the
+**original** Studio reference is **−inf dBFS on all 12 channels, sample-exact** —
+no reference regeneration. Evidence in `docs/evidence/b6/`.
+

@@ -82,7 +82,7 @@ class ElevationListener : public juce::AudioProcessorValueTreeState::Listener,
 
   void parameterChanged(const juce::String& parameterID,
                         float newValue) override {
-    int currentZ = parameterTree_->getZPosition();
+    float currentZ = parameterTree_->getZPosition();
     int newZ = currentZ;
     elevationLock_.enter();
     if (currentElevation_ == Elevation::kTent) {
@@ -116,8 +116,10 @@ class ElevationListener : public juce::AudioProcessorValueTreeState::Listener,
       Coordinates::Point3D domePt = getDomeElevationPtClamped(pt, prevPt) * 50;
       parameterTree_->removeXPositionListener(this);
       parameterTree_->removeYPositionListener(this);
-      parameterTree_->setXPosition(std::round(domePt.a[0]));
-      parameterTree_->setYPosition(std::round(domePt.a[2]));
+      // No rounding: the parameters are continuous now, and rounding here
+      // would reintroduce exactly the quantisation this change removes.
+      parameterTree_->setXPosition(domePt.a[0]);
+      parameterTree_->setYPosition(domePt.a[2]);
       parameterTree_->addXPositionListener(this);
       parameterTree_->addYPositionListener(this);
       newZ = domePt.a[1];

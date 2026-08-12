@@ -32,6 +32,10 @@ const juce::Identifier kTreeType{"AutomationParams"};
 
 // ranges
 const std::pair<int, int> positionRange_({-50.f, 50.f});
+//: the same span as positionRange_, typed for the continuous position
+//: parameters. Kept alongside rather than replacing it: positionRange_
+//: still bounds the numeric dials, which stay whole-number.
+const std::pair<float, float> positionRangeF_({-50.f, 50.f});
 const std::pair<int, int> rotationRange_({-180, 180});
 const std::pair<int, int> spreadRange_({0, 100});
 
@@ -87,10 +91,26 @@ CreateStaticParameterLayout() {
       AutoParamMetaData::getParameterIDFromName(AutoParamMetaData::unmuteId),
       AutoParamMetaData::unmuteId, true));
 
-  // create position control parameters
-  layout.add(createIntParameter(xPosition, positionRange_, 0));
-  layout.add(createIntParameter(yPosition, positionRange_, 0));
-  layout.add(createIntParameter(zPosition, positionRange_, 0));
+  // Position controls are CONTINUOUS (B2 follow-up). They used to be
+  // AudioParameterInt over [-50, +50], i.e. 101 discrete steps, which meant a
+  // DAW physically could not express most directions: asking for azimuth
+  // 30.000 gave x=-25, y=43 and therefore 30.173517, and the B2 null had to be
+  // taken against a reference regenerated at that captured angle.
+  //
+  // AudioParameterFloat over the SAME [-50, +50] range was chosen over a finer
+  // integer scale (e.g. hundredths over [-5000, +5000]) because the stored
+  // number keeps its meaning: a session saved with x=43 loads as 43.0 and the
+  // object does not move. A rescaled integer would have turned every saved
+  // 43 into 0.43 and silently relocated every object in every existing
+  // project, which no version hint can undo after the fact.
+  //
+  // Host automation is unaffected in either direction: automation is recorded
+  // normalised 0..1, the range is unchanged, so existing lanes replay to the
+  // same positions. The parameter IDs and version hint are untouched, so VST3
+  // automation stays bound to the same parameters.
+  layout.add(createFloatParameter(xPosition, positionRangeF_, 0.f));
+  layout.add(createFloatParameter(yPosition, positionRangeF_, 0.f));
+  layout.add(createFloatParameter(zPosition, positionRangeF_, 0.f));
 
   return layout;
 }

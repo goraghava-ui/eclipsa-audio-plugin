@@ -29,15 +29,19 @@ class AudioElementParameterTree : public juce::AudioProcessorValueTreeState {
             panner, nullptr, AutoParamMetaData::kTreeType,
             AutoParamMetaData::CreateStaticParameterLayout()) {};
 
-  int getXPosition() {
+  // float, not int: the position parameters are continuous (see
+  // ParameterMetaData.h). Returning int here would re-quantise them at every
+  // read and put Eclipsa's own monitoring back out of step with the KALA
+  // export, which reads the same parameters' atomics directly.
+  float getXPosition() {
     return getParameterAsValue(AutoParamMetaData::xPosition).getValue();
   }
 
-  int getYPosition() {
+  float getYPosition() {
     return getParameterAsValue(AutoParamMetaData::yPosition).getValue();
   }
 
-  int getZPosition() {
+  float getZPosition() {
     return getParameterAsValue(AutoParamMetaData::zPosition).getValue();
   }
 
@@ -49,15 +53,15 @@ class AudioElementParameterTree : public juce::AudioProcessorValueTreeState {
     return getParameterAsValue(AutoParamMetaData::unmuteId).getValue();
   }
 
-  void setXPosition(int value) {
+  void setXPosition(float value) {
     getParameterAsValue(AutoParamMetaData::xPosition).setValue(value);
   }
 
-  void setYPosition(int value) {
+  void setYPosition(float value) {
     getParameterAsValue(AutoParamMetaData::yPosition).setValue(value);
   }
 
-  void setZPosition(int value) {
+  void setZPosition(float value) {
     getParameterAsValue(AutoParamMetaData::zPosition).setValue(value);
   }
 

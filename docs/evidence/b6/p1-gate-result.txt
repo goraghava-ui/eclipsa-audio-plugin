@@ -1,0 +1,7 @@
+=== param precision gate: az +30.000 ===
+audio device running=1 mode=Dummy Audio
+renderer state applied=true
+panner state applied=true
+requested X=-25.0000000 Y=43.3012695
+bounce issued
+iamf exists=true
