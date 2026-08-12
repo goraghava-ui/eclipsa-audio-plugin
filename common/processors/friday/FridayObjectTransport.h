@@ -65,6 +65,13 @@ struct ObjectBlockHeader {
 /// silently become the exported pan.
 static constexpr uint32_t kFlagOffline = 1u << 0;
 
+/// The publisher is going away — its object should leave the live scene. Sent
+/// from the capture tap's destructor, which is what a track delete, a plugin
+/// remove or a project close all come down to. A time-to-live would have been
+/// the lazy alternative and it blanks the scope whenever the host stops
+/// running FX, which REAPER does on a preference.
+static constexpr uint32_t kFlagGone = 1u << 1;
+
 static constexpr uint32_t kObjectWireVersion = 2;
 /// Object transport lives on its own port; 5555 stays Eclipsa's metadata bus.
 static constexpr int kObjectPort = 5556;

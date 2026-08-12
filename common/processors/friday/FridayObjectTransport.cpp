@@ -202,6 +202,16 @@ void ObjectReceiver::stop() {
   if (!running_.exchange(false, std::memory_order_acq_rel)) return;
   if (worker_.joinable()) worker_.join();
   impl_->socket.close();
+  // With the bus down there is no live scene: nothing is publishing and
+  // nothing can announce a departure, so anything left here would be a ghost
+  // for as long as the process lives. reset() deliberately keeps live
+  // positions across an export arming; stopping is the opposite case.
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->live.clear();
+    impl_->liveIndex.clear();
+  }
+  liveRevision_.fetch_add(1, std::memory_order_relaxed);
 }
 
 void ObjectReceiver::drain(int quietMs, int maxMs) {
@@ -260,6 +270,22 @@ void ObjectReceiver::workerLoop() {
     const std::string key(reinterpret_cast<const char*>(h.uuid), 16);
     const std::string name(h.name,
                            strnlen(h.name, sizeof(h.name)));
+
+    // -- the publisher is leaving: drop it from the live scene -------------
+    if ((h.flags & kFlagGone) != 0) {
+      auto lit = impl_->liveIndex.find(key);
+      if (lit != impl_->liveIndex.end()) {
+        impl_->live.erase(impl_->live.begin() +
+                          static_cast<std::ptrdiff_t>(lit->second));
+        impl_->liveIndex.clear();
+        for (size_t i = 0; i < impl_->live.size(); ++i) {
+          impl_->liveIndex[std::string(
+              reinterpret_cast<const char*>(impl_->live[i].uuid.data()), 16)] = i;
+        }
+        liveRevision_.fetch_add(1, std::memory_order_relaxed);
+      }
+      continue;
+    }
 
     // -- live position, from every block regardless of flags ---------------
     {

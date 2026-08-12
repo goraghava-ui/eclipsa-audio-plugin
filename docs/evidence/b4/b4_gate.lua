@@ -184,7 +184,12 @@ local function stepFn()
       log("play issued")
     elseif tick == 90 then
       reaper.OnStopButton()
-    elseif tick > 200 then
+    elseif tick == 200 then
+      -- Track removal must empty the live scene: the tap announces its own
+      -- departure from its destructor, so the scope cannot keep a ghost orb.
+      reaper.DeleteTrack(strack)
+      log("source track deleted")
+    elseif tick > 260 then
       log("iamf exists=" .. tostring(reaper.file_exists(IAMF)))
       log("fstudio exists=" ..
           tostring(reaper.file_exists(OUT_DIR .. "/bridge_b4.fstudio")))

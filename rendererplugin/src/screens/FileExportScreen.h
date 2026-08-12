@@ -149,5 +149,10 @@ class FileExportScreen : public juce::Component,
 
   // Manual export button -- To be removed later
   juce::TextButton exportButton_;
+#if FRIDAY_KALA_EXPORT
+  /// V2-02: hand the current scene to Studio without exporting audio.
+  juce::TextButton studioHandoffButton_;
+  juce::Label studioHandoffStatus_;
+#endif
   juce::Label warningLabel_;
 };

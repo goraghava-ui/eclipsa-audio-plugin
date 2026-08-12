@@ -66,4 +66,16 @@ std::string stemPathFor(const std::string& sessionPath,
 /// `<export>.iamf` -> `<export>.fstudio`; anything else just gets the suffix.
 std::string sessionPathFor(const std::string& exportFilePath);
 
+/// Hand the SCENE over without exporting: names and positions of everything
+/// the object bus is currently seeing, written as a .fstudio and announced to
+/// a connected Studio. Returns the path written, or "" on failure.
+///
+/// There is no audio in a scene handoff — object stems only exist once a
+/// bounce has captured them — so every object's file_path is empty and
+/// Session.validate() will say so. That is accurate rather than a defect: the
+/// point is to move the ARRANGEMENT to Studio and attach audio there.
+std::string writeSceneHandoff(const std::string& exportFilePath,
+                              const std::string& sessionName, int sampleRate,
+                              float targetLkfs);
+
 }  // namespace friday

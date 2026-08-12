@@ -24,7 +24,10 @@
 #include <juce_core/juce_core.h>
 
 #include <cstdio>
+#include <chrono>
 #include <cstring>
+#include <functional>
+#include <thread>
 #include <limits>
 #include <memory>
 #include <string>
@@ -277,6 +280,146 @@ TEST(FridayStudioSession, an_empty_stem_writes_a_valid_header) {
       friday::writeMonoWav(tmp.getFullPathName().toStdString(), {}, 48000));
   EXPECT_EQ(tmp.getSize(), 44);
   tmp.deleteFile();
+}
+
+//======================================================================
+// The transport round trip
+//
+// These drive the REAL ZeroMQ path — a publisher into the process-wide
+// receiver — because the live scene's two hardest behaviours (a realtime ping
+// must never become export material, a departing track must not leave a ghost)
+// are properties of the wire, not of any one function. They bind the object
+// port, so they stop the receiver again on the way out.
+//======================================================================
+
+class FridayObjectBus : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    friday::sharedObjectReceiver().start();
+    friday::sharedObjectReceiver().reset();
+  }
+  void TearDown() override { friday::sharedObjectReceiver().stop(); }
+
+  static void ping(friday::ObjectPublisher& pub, const uint8_t (&uuid)[16],
+                   float az, const char* name, uint32_t flags = 0) {
+    pub.publish(uuid, az, 0.0f, 0.0f, 0.0f, nullptr, 0, flags, name);
+  }
+
+  /// Publish until the receiver shows what we are waiting for.
+  ///
+  /// A ZeroMQ PUB drops everything sent before the SUB's subscription has
+  /// propagated, so a single send at t=0 is guaranteed to vanish. Repeating is
+  /// not a workaround for flakiness — it is what the capture tap does, which
+  /// pings at ~60 Hz for as long as the plugin is loaded.
+  static bool pumpUntil(const std::function<void()>& send,
+                        const std::function<bool()>& done, int ms = 5000) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (done()) return true;
+      send();
+      std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    }
+    return done();
+  }
+
+  /// Wait for something already in flight, sending nothing more.
+  static bool waitFor(const std::function<bool()>& done, int ms = 3000) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (done()) return true;
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return done();
+  }
+};
+
+TEST_F(FridayObjectBus, a_realtime_ping_reaches_the_live_scene) {
+  friday::ObjectPublisher pub;
+  const uint8_t uuid[16] = {1};
+  ASSERT_TRUE(pumpUntil([&] { ping(pub, uuid, 42.0f, "kick"); },
+                        [] {
+                          return friday::sharedObjectReceiver()
+                                     .liveSnapshot()
+                                     .size() == 1;
+                        }))
+      << "no live object arrived";
+  const auto live = friday::sharedObjectReceiver().liveSnapshot();
+  EXPECT_EQ(live[0].name, "kick");
+  EXPECT_FLOAT_EQ(live[0].az_deg, 42.0f);
+}
+
+// The B2 null depends on this: a ping arriving while an export drains must not
+// become, or move, exported material.
+TEST_F(FridayObjectBus, a_realtime_ping_is_not_export_material) {
+  friday::ObjectPublisher pub;
+  const uint8_t uuid[16] = {2};
+  ASSERT_TRUE(pumpUntil([&] { ping(pub, uuid, 10.0f, "gtr"); }, [] {
+    return !friday::sharedObjectReceiver().liveSnapshot().empty();
+  }));
+  EXPECT_EQ(friday::sharedObjectReceiver().objectCount(), 0u)
+      << "a position ping was accumulated for export";
+  EXPECT_TRUE(friday::sharedObjectReceiver().take().empty());
+  // drain() waits on offline blocks only; pings must not keep it alive.
+  EXPECT_EQ(friday::sharedObjectReceiver().blocksReceived(), 0u);
+}
+
+TEST_F(FridayObjectBus, a_departing_publisher_leaves_the_live_scene) {
+  friday::ObjectPublisher pub;
+  const uint8_t a[16] = {3};
+  const uint8_t b[16] = {4};
+  ASSERT_TRUE(pumpUntil(
+      [&] {
+        ping(pub, a, 0.0f, "one");
+        ping(pub, b, 0.0f, "two");
+      },
+      [] {
+        return friday::sharedObjectReceiver().liveSnapshot().size() == 2;
+      }));
+
+  // Stop pinging `a` and announce its departure — the link is established by
+  // now, so this one does not need repeating.
+  ping(pub, a, 0.0f, "one", friday::kFlagGone);
+  ASSERT_TRUE(waitFor([] {
+    return friday::sharedObjectReceiver().liveSnapshot().size() == 1;
+  })) << "the removed object is still on the scope";
+  // The survivor keeps its identity — the index rebuild must not scramble it.
+  EXPECT_EQ(friday::sharedObjectReceiver().liveSnapshot()[0].name, "two");
+}
+
+TEST_F(FridayObjectBus, a_scene_handoff_with_nothing_on_the_bus_writes_nothing) {
+  EXPECT_TRUE(friday::writeSceneHandoff("/tmp/nothing.iamf", "x", 48000, -16.0f)
+                  .empty());
+}
+
+TEST_F(FridayObjectBus, a_scene_handoff_carries_names_and_positions) {
+  friday::ObjectPublisher pub;
+  const uint8_t uuid[16] = {5};
+  ASSERT_TRUE(pumpUntil([&] { ping(pub, uuid, -33.5f, "vox"); }, [] {
+    return !friday::sharedObjectReceiver().liveSnapshot().empty();
+  }));
+
+  const juce::File out =
+      juce::File::createTempFile("friday_scene_handoff.iamf");
+  const std::string path = friday::writeSceneHandoff(
+      out.getFullPathName().toStdString(), "scene", 48000, -16.0f);
+  ASSERT_FALSE(path.empty());
+
+  const juce::var s = juce::JSON::parse(juce::File(path).loadFileAsString());
+  ASSERT_TRUE(s.isObject());
+  const juce::var objs = s.getProperty("objects", {});
+  ASSERT_EQ(objs.size(), 1);
+  EXPECT_EQ(objs[0].getProperty("name", {}).toString(), "vox");
+  // No audio exists until a bounce captures it, so the stem is deliberately
+  // empty and Studio will report it — see writeSceneHandoff's contract.
+  EXPECT_EQ(objs[0].getProperty("file_path", {}).toString(), "");
+  const juce::var kfs = objs[0].getProperty("keyframes", {});
+  ASSERT_EQ(kfs.size(), 1);
+  EXPECT_NEAR(static_cast<double>(kfs[0].getProperty("azimuth", {})), -33.5,
+              1e-3);
+  juce::File(path).deleteFile();
+  out.deleteFile();
 }
 
 }  // namespace

@@ -70,7 +70,18 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     }
   }
 
-  ~FridayObjectCaptureProcessor() override = default;
+  ~FridayObjectCaptureProcessor() override {
+    // Tell the scope this object is gone. A deleted track, a removed plugin
+    // and a closed project all arrive here. The uuid is the cached one rather
+    // than a fresh repository read: this runs on the message thread during
+    // teardown and the repositories are not guaranteed to outlive us.
+    // publisher_ is destroyed after this body, and its shutdown drain flushes
+    // the message.
+    if (published_) {
+      publisher_.publish(uuid_, 0.0f, 0.0f, 0.0f, 0.0f, nullptr, 0,
+                         friday::kFlagGone, name_);
+    }
+  }
 
   const juce::String getName() const override {
     return "FRIDAY Object Capture";
@@ -118,13 +129,13 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     cartesianToPolarDegrees(rawParam(x_), rawParam(y_), rawParam(z_), az, el);
 
     juce::Uuid id = layout.getAudioElementId();
-    uint8_t uuid[16];
-    std::memcpy(uuid, id.getRawData(), 16);
+    std::memcpy(uuid_, id.getRawData(), 16);
+    published_ = true;
 
     const float gain = rawParam(volume_);
 
     if (offline) {
-      publisher_.publish(uuid, az, el, /*spread=*/0.0f, gain,
+      publisher_.publish(uuid_, az, el, /*spread=*/0.0f, gain,
                          buffer.getReadPointer(0),
                          static_cast<uint32_t>(buffer.getNumSamples()),
                          friday::kFlagOffline, name_);
@@ -135,7 +146,7 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     // so this costs a fixed ~72 bytes into the ring and nothing else; the
     // export never sees these blocks (they carry no kFlagOffline).
     liveTick_ = 0;
-    publisher_.publish(uuid, az, el, /*spread=*/0.0f, gain, nullptr, 0,
+    publisher_.publish(uuid_, az, el, /*spread=*/0.0f, gain, nullptr, 0,
                        /*flags=*/0, name_);
   }
 
@@ -212,6 +223,10 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
   std::atomic<float>* unmute_ = nullptr;
   std::atomic<bool> offline_{false};
   char name_[32] = {};
+  /// Last published identity, so the destructor can announce the removal
+  /// without touching a repository that may already be gone.
+  uint8_t uuid_[16] = {};
+  bool published_ = false;
   int liveTick_ = 0;
   int liveInterval_ = 1;
   friday::ObjectPublisher publisher_;

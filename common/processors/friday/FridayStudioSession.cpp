@@ -158,6 +158,33 @@ std::string stemPathFor(const std::string& sessionPath,
   return base + "_" + safe + ".wav";
 }
 
+std::string writeSceneHandoff(const std::string& exportFilePath,
+                              const std::string& sessionName, int sampleRate,
+                              float targetLkfs) {
+  const std::vector<ObjectReceiver::LiveObject> live =
+      sharedObjectReceiver().liveSnapshot();
+  if (live.empty()) return {};
+
+  std::vector<SessionObject> objects;
+  objects.reserve(live.size());
+  for (size_t i = 0; i < live.size(); ++i) {
+    SessionObject o;
+    o.name = live[i].name.empty() ? ("object " + std::to_string(i + 1))
+                                  : live[i].name;
+    o.keyframes.push_back({0.0, live[i].az_deg, live[i].el_deg, live[i].spread,
+                           live[i].gain_db});
+    objects.push_back(std::move(o));
+  }
+
+  const std::string path = sessionPathFor(exportFilePath);
+  if (!writeSessionFile(path, buildSessionJson(sessionName, sampleRate,
+                                               targetLkfs, "en", objects))) {
+    return {};
+  }
+  sharedStudioLink().sendHandoff(path);
+  return path;
+}
+
 std::string sessionPathFor(const std::string& exportFilePath) {
   const std::string kSuffix = ".iamf";
   if (exportFilePath.size() >= kSuffix.size() &&

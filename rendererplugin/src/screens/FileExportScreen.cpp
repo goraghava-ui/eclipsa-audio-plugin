@@ -60,6 +60,9 @@ FileExportScreen::FileExportScreen(MainEditor& editor,
           juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
           "*.mp4;*.mov"),
       exportButton_("Start Export"),
+#if FRIDAY_KALA_EXPORT
+      studioHandoffButton_("Hand off to Studio"),
+#endif
       exportValidation_(repos.playbackRepo_, repos.fioRepo_, fpbData),
       repository_(&repos.fioRepo_),
       aeRepository_(&repos.aeRepo_),
@@ -97,6 +100,41 @@ FileExportScreen::FileExportScreen(MainEditor& editor,
       juce::Label::ColourIds::textColourId, EclipsaColours::red);
   exportButton_.setColour(juce::TextButton::textColourOffId,
                           EclipsaColours::green);
+#if FRIDAY_KALA_EXPORT
+  studioHandoffButton_.setColour(juce::TextButton::textColourOffId,
+                                 EclipsaColours::green);
+  studioHandoffStatus_.setColour(juce::Label::textColourId,
+                                 EclipsaColours::tabTextGrey);
+  studioHandoffStatus_.setJustificationType(juce::Justification::centredLeft);
+  // Scene only: names and positions of whatever the object bus is seeing.
+  // Object stems exist only once a bounce has captured them, so a session
+  // handed over this way carries no audio and Studio will say so — the point
+  // is to move the ARRANGEMENT across and attach audio there.
+  studioHandoffButton_.onClick = [this] {
+    const FileExport config = repository_->get();
+    const juce::String kExportFile = config.getExportFile();
+    if (kExportFile.isEmpty()) {
+      studioHandoffStatus_.setText("set an export path first",
+                                   juce::dontSendNotification);
+      return;
+    }
+    const std::string path = friday::writeSceneHandoff(
+        kExportFile.toStdString(),
+        juce::File(kExportFile).getFileNameWithoutExtension().toStdString(),
+        config.getSampleRate(), KalaIamfWriter::kDefaultTargetLkfs);
+    if (path.empty()) {
+      studioHandoffStatus_.setText("no objects on the bus yet",
+                                   juce::dontSendNotification);
+      return;
+    }
+    studioHandoffStatus_.setText(
+        friday::sharedStudioLink().isConnected()
+            ? juce::String("handed off: ") + juce::File(path).getFileName()
+            : juce::String("written (Studio not connected): ") +
+                  juce::File(path).getFileName(),
+        juce::dontSendNotification);
+  };
+#endif
 
   juce::Font textFont = juce::Font("Roboto", 22.0f, juce::Font::plain);
   juce::Font labelFont = juce::Font("Roboto", 18.0f, juce::Font::plain);
@@ -802,6 +840,16 @@ void FileExportScreen::paint(juce::Graphics& g) {
 
   bounds.removeFromLeft(mainColumnPadding);
   auto validationBounds = bounds.removeFromLeft(mainColumnWidth);
+#if FRIDAY_KALA_EXPORT
+  // Unconditionally visible, unlike exportButton_ which upstream only shows
+  // under Premiere or a debug build.
+  auto handoffRow = validationBounds.removeFromBottom(rowHeight);
+  addAndMakeVisible(studioHandoffButton_);
+  studioHandoffButton_.setBounds(handoffRow.removeFromLeft(200));
+  handoffRow.removeFromLeft(columnPadding);
+  addAndMakeVisible(studioHandoffStatus_);
+  studioHandoffStatus_.setBounds(handoffRow);
+#endif
   exportValidation_.setBounds(validationBounds);
 };
 
