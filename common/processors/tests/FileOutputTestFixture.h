@@ -66,6 +66,7 @@ class FileOutputTests : public ::testing::Test {
  public:
   using Layout = Speakers::AudioElementSpeakerLayout;
 
+
   // Constants
   static constexpr int kSampleRate = 16e3;
   static constexpr int kSamplesPerFrame = 128;
@@ -268,6 +269,14 @@ class FileOutputTests : public ::testing::Test {
       : ex(fileExportRepository.get()),
         fio_proc(fileExportRepository, fpbr, audioElementRepository,
                  mixRepository, mixPresentationLoudnessRepository) {
+#if FRIDAY_KALA_EXPORT
+    // These tests drive FileOutputProcessor with bed buffers and no object bus,
+    // and cover codecs and layouts the KALA path does not implement (FLAC,
+    // Opus, arbitrary element layouts). They therefore keep exercising
+    // upstream's exporter, which is what they were written for; the KALA path's
+    // own proof is the B2 null gate. See FileOutputProcessor::setKalaExportEnabled.
+    fio_proc.setKalaExportEnabled(false);
+#endif
     // Configure basic audio export data
     ex.setExportAudio(true);
     ex.setAudioFileFormat(AudioFileFormat::IAMF);

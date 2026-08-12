@@ -228,6 +228,48 @@ directly into the VST3 chunks. See `docs/B1-LINUX-EVIDENCE.md` §4.
 **Known defect:** REAPER segfaults on exit whenever the Renderer plugin has been
 instantiated, always after the render completes. Renders are unaffected.
 
+## 7. The unit suite
+
+Not built by the default configure. Enable it with `-DINTERNAL_TEST=ON`, which
+also fetches googletest and adds a global compile definition — expect a large
+rebuild the first time.
+
+```
+cmake -DINTERNAL_TEST=ON /data/build/bridge-build
+cmake --build /data/build/bridge-build --target eclipsa_tests
+```
+
+**Run it from an in-tree `build/` directory, not from the build tree.** Two
+tests locate their WAV fixtures relative to `std::filesystem::current_path()`
+and assume the build directory is `<source>/build`:
+
+| test | expectation |
+|---|---|
+| `test_loudness_proc.verify_metadata` | cwd contains `common/processors/tests`, or its parent is the source root |
+| `test_ebu128_measurements.loudness_test` | `parent_path(cwd)` is the source root |
+
+Only `<source>/build` satisfies both. Out-of-tree they read a nonexistent file;
+`verify_metadata` then **segfaults** rather than failing cleanly, which looks
+like a crash in the code under test and is not one. `/build` is already
+gitignored, so:
+
+```
+mkdir -p /data/projects/friday/friday-bridge/build
+cd /data/projects/friday/friday-bridge/build
+/data/build/bridge-build/eclipsa_tests --gtest_brief=1
+```
+
+### The suite and `FRIDAY_KALA_EXPORT`
+
+`FileOutputTests` and `IAMFFileReaderTest` drive `FileOutputProcessor` directly
+with bed buffers and no object bus, and cover FLAC, Opus and arbitrary element
+layouts. The KALA export path encodes *captured objects* and implements LPCM
+7.1.4 only, so it is deliberately **not** a drop-in for upstream's exporter —
+with it armed those tests produce no file at all. The fixture therefore calls
+`FileOutputProcessor::setKalaExportEnabled(false)` and keeps testing the writer
+it was written for; the KALA path's proof is the B2 null gate
+(`BRIDGE-B2-PLAN.md` §13). Nothing in production calls that setter.
+
 ## Licence note
 
 This tree builds under **JUCE 7.0.12**, whose licence is the JUCE 7 EULA *or*

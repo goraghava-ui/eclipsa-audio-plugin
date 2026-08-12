@@ -494,7 +494,43 @@ with the Dummy Audio device.
 | B2-6 | B1 regression, export ON | monitoring render unchanged | **PASS — identical** | §12, `b1-regression-measurements.txt` |
 
 Supporting suites: kala-engine **27 suites / 252 tests, 0 failed**;
-friday-studio **121 passed**.
+friday-studio **121 passed**; Bridge's own suite **267 tests, 263 passed**
+(see below).
+
+### Bridge's unit suite — first run on Linux
+
+It had never been built on this bench. Enabling it surfaced three separate
+problems, only one of them from this work:
+
+1. **Configure hard-failed.** `common/processors/tests/CMakeLists.txt` named
+   `IamfBufferedReader_test.cpp`; the file is `IAMFBufferedReader_test.cpp`.
+   Resolves on macOS, fatal on Linux. Portability defect #5.
+2. **Two tests segfault out-of-tree.** `test_loudness_proc.verify_metadata` and
+   `test_ebu128_measurements.loudness_test` locate their WAV fixtures relative
+   to `current_path()` and assume the build directory is `<source>/build`. Run
+   from `/data/build/bridge-build` they read a nonexistent file and crash
+   rather than fail. Not a code defect — a run-directory requirement, now in
+   `docs/BUILDING-LINUX.md` §7.
+3. **53 tests failed from this work.** `FileOutputTests` (47) and
+   `IAMFFileReaderTest` (6) drive `FileOutputProcessor` with bed buffers and no
+   object bus, and cover FLAC, Opus and arbitrary element layouts. The KALA
+   path encodes captured objects and implements LPCM 7.1.4 only, so it is
+   deliberately **not** a drop-in and produced no file. Fixed by making the
+   writer choice runtime-switchable (`setKalaExportEnabled`) so upstream's suite
+   keeps testing upstream's writer. `FridayObjectCapture_test.cpp` adds 15 tests
+   over the parts of the capture path the null gate cannot localise a failure
+   in: the trim, the azimuth convention that has to match Studio, and the SPSC
+   ring.
+
+**Four failures remain, all in code this work does not touch:**
+
+| test | why |
+|---|---|
+| `FileOutputTests.validate_file_checksum`, `.pp_validate_file_checksum` | compare a fresh `.iamf` sha256 against a reference recorded on upstream's macOS toolchain. This bench builds iamf-tools from source against different abseil/protobuf with LTO, so the bytes differ. The KALA path is disabled in these tests, so the encoder they exercise is upstream's. Also order-dependent: `pp_validate_file_checksum` passes when the two are run alone. |
+| `LoggerTest.LogFromMultipleThreads`, `.LoggerInitMultipleCalls` | the logger finds no messages in the files it scans. Fails in isolation too, so it is not contaminated by other suites; nothing in this work touches `common/logger`. |
+
+Neither has been fixed here — they are upstream/bench issues that predate the
+B2 work and are recorded rather than quietly absorbed.
 
 Deviations from PRD-v2 §6 Phase A, carried in the commit message:
 

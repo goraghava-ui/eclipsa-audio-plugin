@@ -68,6 +68,16 @@ class FileOutputProcessor : public ProcessorBase {
   // closes any export still open. Compiled in only with the KALA path; upstream
   // semantics are untouched.
   void releaseResources() override;
+
+  /// The KALA path encodes CAPTURED OBJECTS, so it is not a drop-in for
+  /// upstream's bed exporter: it produces nothing when no panner is publishing,
+  /// and it implements LPCM 7.1.4 only (no FLAC/Opus, no arbitrary element
+  /// layouts). Upstream's own unit suite drives this processor directly with
+  /// bed buffers and no object bus, so it opts out here and keeps testing the
+  /// writer it was written for. Production code never calls this.
+  void setKalaExportEnabled(bool enabled) noexcept {
+    kalaExportEnabled_ = enabled;
+  }
 #endif
 
   //==============================================================================
@@ -140,6 +150,7 @@ class FileOutputProcessor : public ProcessorBase {
   // deliverable. Eclipsa's own writers (per-element WAV, muxing) are
   // untouched. See BRIDGE-B2-PLAN.md.
   std::unique_ptr<KalaIamfWriter> kalaIamfWriter_;
+  bool kalaExportEnabled_ = true;  // see setKalaExportEnabled()
 #endif
   void* securityScopedHandle_ = nullptr;
   //==============================================================================

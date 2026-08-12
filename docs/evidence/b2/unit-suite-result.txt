@@ -1,0 +1,8 @@
+FRIDAY Bridge unit suite — Linux, FRIDAY_KALA_EXPORT=ON, run from <src>/build
+
+[  FAILED  ] FileOutputTests.pp_validate_file_checksum (1 ms)
+[  FAILED  ] FileOutputTests.validate_file_checksum (0 ms)
+[  FAILED  ] LoggerTest.LogFromMultipleThreads (0 ms)
+[  FAILED  ] LoggerTest.LoggerInitMultipleCalls (0 ms)
+[==========] 267 tests from 57 test suites ran. (27669 ms total)
+[  PASSED  ] 263 tests.

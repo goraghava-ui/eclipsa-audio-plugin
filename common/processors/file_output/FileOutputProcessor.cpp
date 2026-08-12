@@ -77,7 +77,7 @@ void FileOutputProcessor::prepareToPlay(const double sampleRate,
   // Bring the object bus up now, not when an export arms. ZeroMQ's PUB/SUB
   // handshake costs ~100 ms and an offline bounce of a short project finishes
   // inside that, so binding at arm time loses the head of the capture.
-  friday::sharedObjectReceiver().start();
+  if (kalaExportEnabled_) friday::sharedObjectReceiver().start();
 #endif
 }
 
@@ -201,36 +201,38 @@ void FileOutputProcessor::initializeFileExport(FileExport& config) {
   if (FileExport::validateFilePath(
           FileExport::expandTildePath(kIamfPath).toStdString(), false)) {
 #if FRIDAY_KALA_EXPORT
-    // FRIDAY Bridge B2: KALA renders the captured objects and writes the
-    // .iamf; iamf-tools stays out of the deliverable path entirely so the
-    // bitstream is byte-comparable with Studio's.
-    kalaIamfWriter_ =
-        std::make_unique<KalaIamfWriter>(fileExportRepository_,
-                                         config.getSampleRate());
-    if (!kalaIamfWriter_->open(kIamfPath.toStdString())) {
-      kalaIamfWriter_ = nullptr;
-      LOG_ERROR(0, "KALA IAMF writer: failed to arm for " +
-                       kIamfPath.toStdString());
-      config.setExportError(classifyWriteFailure(kIamfPath));
-      fileExportRepository_.update(config);
-    }
-#else
-    // Create an IAMF file writer to perform the file writing
-    iamfFileWriter_ = std::make_unique<IAMFFileWriter>(
-        fileExportRepository_, audioElementRepository_,
-        mixPresentationRepository_, mixPresentationLoudnessRepository_,
-        numSamples_, config.getSampleRate());
-
-    // Open the file for writing
-    bool openSuccess = iamfFileWriter_->open(kIamfPath.toStdString());
-    if (!openSuccess) {
-      iamfFileWriter_ = nullptr;
-      LOG_ERROR(0, "IAMF File Writer: Failed to open file for writing: " +
-                       kIamfPath.toStdString());
-      config.setExportError(classifyWriteFailure(kIamfPath));
-      fileExportRepository_.update(config);
-    }
+    if (kalaExportEnabled_) {
+      // FRIDAY Bridge B2: KALA renders the captured objects and writes the
+      // .iamf; iamf-tools stays out of the deliverable path entirely so the
+      // bitstream is byte-comparable with Studio's.
+      kalaIamfWriter_ = std::make_unique<KalaIamfWriter>(
+          fileExportRepository_, config.getSampleRate());
+      if (!kalaIamfWriter_->open(kIamfPath.toStdString())) {
+        kalaIamfWriter_ = nullptr;
+        LOG_ERROR(0, "KALA IAMF writer: failed to arm for " +
+                         kIamfPath.toStdString());
+        config.setExportError(classifyWriteFailure(kIamfPath));
+        fileExportRepository_.update(config);
+      }
+    } else
 #endif
+    {
+      // Create an IAMF file writer to perform the file writing
+      iamfFileWriter_ = std::make_unique<IAMFFileWriter>(
+          fileExportRepository_, audioElementRepository_,
+          mixPresentationRepository_, mixPresentationLoudnessRepository_,
+          numSamples_, config.getSampleRate());
+
+      // Open the file for writing
+      bool openSuccess = iamfFileWriter_->open(kIamfPath.toStdString());
+      if (!openSuccess) {
+        iamfFileWriter_ = nullptr;
+        LOG_ERROR(0, "IAMF File Writer: Failed to open file for writing: " +
+                         kIamfPath.toStdString());
+        config.setExportError(classifyWriteFailure(kIamfPath));
+        fileExportRepository_.update(config);
+      }
+    }
   } else {
     LOG_WARNING(
         0, "FileOutputProcessor: Cannot write IAMF data to an invalid path.");

@@ -132,6 +132,10 @@ static inline void bouncePremiereProAudio(
   PremiereProFileOutputProcessor fio_proc_pp(
       fileExportRepository, filePlaybackRepository, audioElementRepository,
       mixPresentationRepository, mixPresentationLoudnessRepository);
+#if FRIDAY_KALA_EXPORT
+  // Bed buffers, no object bus — same reason as the FileOutputTests fixture.
+  fio_proc_pp.setKalaExportEnabled(false);
+#endif
 
   const unsigned kNumChannels = totalAudioChannels(audioElementRepository);
   const auto kSineTone = generateSineWave(440.0f, sampleRate, frameSize);
