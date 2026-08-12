@@ -49,6 +49,7 @@ END_JUCE_MODULE_DECLARATION
 #include "src/SliderLabelAttachment.h"
 #include "src/TimeFormatSegmentSelector.h"
 #include "src/WarningBannerBase.h"
+#include "src/friday/FridayPannerScope.h"
 #include "src/ambisonics_visualizers/VisualizerPair.h"
 #include "src/loudness_meter/LoudnessMeter.h"
 #include "src/loudness_meter/LoudnessScale.h"

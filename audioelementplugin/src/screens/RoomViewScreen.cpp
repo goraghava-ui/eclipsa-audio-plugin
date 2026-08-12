@@ -14,6 +14,8 @@
 
 #include "RoomViewScreen.h"
 
+#include "components/src/EclipsaColours.h"
+
 RoomViewScreen::RoomViewScreen(
     AudioElementPluginSyncClient* syncClient,
     AudioElementSpatialLayoutRepository* audioElementSpatialLayoutRepo,
@@ -22,7 +24,8 @@ RoomViewScreen::RoomViewScreen(
       audioElementSpatialLayoutRepository_(audioElementSpatialLayoutRepo),
       parameterTree_(tree),
       onRoomElevationChange_([this] { elevationChangeCallback(); }),
-      room_(std::make_unique<AudioElementPluginRearView>(monitorData)),
+      room_(std::make_unique<FridayPannerScope>(
+          *tree, audioElementSpatialLayoutRepo)),
       selRoomElevation_({IconStore::getInstance().getFlatElevationIcon(),
                          IconStore::getInstance().getTentElevationIcon(),
                          IconStore::getInstance().getArchElevationIcon(),
@@ -37,14 +40,24 @@ RoomViewScreen::RoomViewScreen(
   if (!audioElementSpatialLayoutRepository_->get()
            .getAudioElementId()
            .isNull()) {
-    room_->setDisplaySpeakers(true);
-    room_->setSpeakers(
+    room_->setSpeakerLayout(
         audioElementSpatialLayoutRepository_->get().getChannelLayout());
   }
-  room_->setDisplayLabels(true);
+  room_->setInteractive(
+      audioElementSpatialLayoutRepository_->get().isPanningEnabled());
+  room_->setElevationContours(
+      audioElementSpatialLayoutRepository_->get().getElevation() !=
+      AudioElementSpatialLayout::Elevation::kFlat);
   addAndMakeVisible(room_.get());
 
   // Configure the roof selection, but only make visible if panning is enabled
+
+  positionReadout_.setJustificationType(juce::Justification::centred);
+  positionReadout_.setFont(
+      juce::Font(juce::Font::getDefaultMonospacedFontName(), 13.0f,
+                 juce::Font::plain));
+  positionReadout_.setColour(juce::Label::textColourId, EclipsaColours::amber);
+  addAndMakeVisible(positionReadout_);
 
   addAndMakeVisible(selRoomElevation_);
   selRoomElevation_.onChange(onRoomElevationChange_);
@@ -71,7 +84,10 @@ void RoomViewScreen::paint(juce::Graphics& g) {
 
   auto roomViewBounds =
       bounds.removeFromTop(viewScreenBounds.proportionOfHeight(0.9f));
+  auto readoutBounds =
+      roomViewBounds.removeFromBottom(viewScreenBounds.proportionOfHeight(0.05f));
   room_->setBounds(roomViewBounds);
+  positionReadout_.setBounds(readoutBounds);
 
   auto elevationToggleBounds = bounds;
   elevationToggleBounds.reduce(viewScreenBounds.proportionOfWidth(0.11f), 0.f);
@@ -95,40 +111,29 @@ void RoomViewScreen::elevationChangeCallback() {
     parameterTree_->setZPosition(30);
   }
 
-  // Update the room view with the new elevation pattern.
-  room_->setElevationPattern(newElevation);
+  // The radar shows a constrained surface as contours; "flat" means the user
+  // owns height independently, so there is no surface to draw.
+  room_->setElevationContours(newElevation !=
+                              AudioElementSpatialLayout::Elevation::kFlat);
 }
 
 // On the same timer for rendering the tracks, add height data if the selected
 // elevation is 'Flat'.
 void RoomViewScreen::timerCallback() {
-  // Update room view track data to be drawn.
-  AudioElementUpdateData trackData;
-  trackData.x = parameterTree_->getXPosition();
-  trackData.y = parameterTree_->getYPosition();
-  trackData.z = parameterTree_->getZPosition();
-  // Loudness as an average of channels.
-  const int kNumCh = audioElementSpatialLayoutRepository_->get()
-                         .getChannelLayout()
-                         .getNumChannels();
-  std::vector<float> loudnesses;
-  spkrData_.playbackLoudness.read(loudnesses);
-  float avgLoudness = 0.f;
-  for (const auto& loudness : loudnesses) {
-    avgLoudness += std::max(loudness, -60.0f);
-  }
-  avgLoudness /= kNumCh;
-  trackData.loudness = avgLoudness;
-  room_->setTracks({trackData});
+  // The scope polls the parameter atomics on its own timer and repaints itself,
+  // so there is nothing to push at it here. The screen's timer stays for the
+  // repository-driven state the scope cannot see for itself.
+  room_->setInteractive(
+      audioElementSpatialLayoutRepository_->get().isPanningEnabled());
 
-  // If the room view is set to 'Flat' elevation, notify the room view so it
-  // knows what height to draw the pattern at.
-  if (static_cast<Elevation>(selRoomElevation_.getToggled()) ==
-      Elevation::kFlat) {
-    room_->setFlatHeight(parameterTree_->getZPosition());
-  }
-
-  room_->repaint();
+  const float x = static_cast<float>(parameterTree_->getXPosition());
+  const float y = static_cast<float>(parameterTree_->getYPosition());
+  const float z = static_cast<float>(parameterTree_->getZPosition());
+  float az = 0.0f, el = 0.0f;
+  FridayPannerScope::xyzToAzimuthElevation(x, y, z, az, el);
+  positionReadout_.setText(
+      juce::String::formatted("AZ %+6.1f\xc2\xb0   EL %+5.1f\xc2\xb0", az, el),
+      juce::dontSendNotification);
 }
 
 void RoomViewScreen::valueTreePropertyChanged(
@@ -142,9 +147,8 @@ void RoomViewScreen::valueTreePropertyChanged(
                         .toStdString());
 
   if (property == AudioElementSpatialLayout::kLayout) {
-    room_->setSpeakers(
+    room_->setSpeakerLayout(
         audioElementSpatialLayoutRepository_->get().getChannelLayout());
-    room_->setDisplaySpeakers(true);
   }
 
   if (property == AudioElementSpatialLayout::kPanningEnabled) {

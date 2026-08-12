@@ -13,3 +13,7 @@
 # limitations under the License.
 
 eclipsa_add_test(test_export_error_banner ExportErrorBanner_test.cpp "components")
+
+# B5 / V2-01-UI — the midnight-scope panner pad. Also renders the parity
+# screenshots when FRIDAY_B5_SHOTS is set.
+eclipsa_add_test(test_friday_panner_scope FridayPannerScope_test.cpp "components;processors")

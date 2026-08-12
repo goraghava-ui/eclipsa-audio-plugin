@@ -27,18 +27,67 @@
 #include "substream_rdr/substream_rdr_utils/Speakers.h"
 
 CustomLookAndFeel::CustomLookAndFeel() {
-  setColour(juce::ResizableWindow::backgroundColourId,
-            EclipsaColours::backgroundOffBlack);
-  setColour(juce::Label::textColourId, EclipsaColours::textWhite);
+  // B5 / V2-01-UI: the "midnight scope" language, matching FRIDAY Studio.
+  // Deep charcoal surfaces, hairline borders, ONE warm signal colour (amber =
+  // the object) against cool instrument tones. Every id JUCE would otherwise
+  // fill with its stock grey is set here — a single unset id shows up as a
+  // pale rectangle against this palette and is very obvious.
+  setColour(juce::ResizableWindow::backgroundColourId, EclipsaColours::bg0);
+  setColour(juce::Label::textColourId, EclipsaColours::textBright);
   setColour(juce::Label::backgroundColourId,
-            findColour(juce::ResizableWindow::backgroundColourId));
-  setColour(juce::TextButton::ColourIds::buttonColourId,
-            EclipsaColours::backgroundOffBlack);
-  setColour(juce::TextButton::ColourIds::buttonOnColourId,
-            EclipsaColours::rolloverGrey);
-  setColour(juce::TextButton::textColourOffId, EclipsaColours::selectCyan);
-  setColour(juce::TextButton::ColourIds::textColourOnId,
-            EclipsaColours::selectCyan);
+            juce::Colours::transparentBlack);
+  setColour(juce::Label::outlineColourId, juce::Colours::transparentBlack);
+
+  setColour(juce::TextButton::buttonColourId, EclipsaColours::bg1);
+  setColour(juce::TextButton::buttonOnColourId, EclipsaColours::bg2);
+  setColour(juce::TextButton::textColourOffId, EclipsaColours::textDim);
+  setColour(juce::TextButton::textColourOnId, EclipsaColours::amber);
+
+  setColour(juce::ComboBox::backgroundColourId, EclipsaColours::bg1);
+  setColour(juce::ComboBox::textColourId, EclipsaColours::textBright);
+  setColour(juce::ComboBox::outlineColourId, EclipsaColours::hairline);
+  setColour(juce::ComboBox::arrowColourId, EclipsaColours::textDim);
+  setColour(juce::ComboBox::buttonColourId, EclipsaColours::bg2);
+  setColour(juce::ComboBox::focusedOutlineColourId, EclipsaColours::amber);
+
+  setColour(juce::PopupMenu::backgroundColourId, EclipsaColours::bg1);
+  setColour(juce::PopupMenu::textColourId, EclipsaColours::textBright);
+  setColour(juce::PopupMenu::highlightedBackgroundColourId,
+            EclipsaColours::bg2);
+  setColour(juce::PopupMenu::highlightedTextColourId, EclipsaColours::amber);
+
+  setColour(juce::Slider::backgroundColourId, EclipsaColours::bg2);
+  setColour(juce::Slider::trackColourId, EclipsaColours::hairline);
+  setColour(juce::Slider::thumbColourId, EclipsaColours::amber);
+  setColour(juce::Slider::rotarySliderFillColourId, EclipsaColours::amber);
+  setColour(juce::Slider::rotarySliderOutlineColourId,
+            EclipsaColours::hairline);
+  setColour(juce::Slider::textBoxTextColourId, EclipsaColours::textBright);
+  setColour(juce::Slider::textBoxBackgroundColourId, EclipsaColours::bg1);
+  setColour(juce::Slider::textBoxOutlineColourId, EclipsaColours::hairline);
+  setColour(juce::Slider::textBoxHighlightColourId,
+            EclipsaColours::blueSelect.withAlpha(0.35f));
+
+  setColour(juce::TextEditor::backgroundColourId, EclipsaColours::bg1);
+  setColour(juce::TextEditor::textColourId, EclipsaColours::textBright);
+  setColour(juce::TextEditor::outlineColourId, EclipsaColours::hairline);
+  setColour(juce::TextEditor::focusedOutlineColourId, EclipsaColours::amber);
+  setColour(juce::TextEditor::highlightColourId,
+            EclipsaColours::blueSelect.withAlpha(0.35f));
+  setColour(juce::TextEditor::highlightedTextColourId,
+            EclipsaColours::textBright);
+  setColour(juce::CaretComponent::caretColourId, EclipsaColours::amber);
+
+  setColour(juce::ToggleButton::textColourId, EclipsaColours::textBright);
+  setColour(juce::ToggleButton::tickColourId, EclipsaColours::amber);
+  setColour(juce::ToggleButton::tickDisabledColourId,
+            EclipsaColours::textFaint);
+
+  setColour(juce::ScrollBar::backgroundColourId, EclipsaColours::bg1);
+  setColour(juce::ScrollBar::thumbColourId, EclipsaColours::hairline);
+  setColour(juce::TooltipWindow::backgroundColourId, EclipsaColours::bg2);
+  setColour(juce::TooltipWindow::textColourId, EclipsaColours::textBright);
+  setColour(juce::TooltipWindow::outlineColourId, EclipsaColours::hairline);
 }
 
 void CustomLookAndFeel::drawButtonBackground(

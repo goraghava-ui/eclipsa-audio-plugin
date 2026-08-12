@@ -224,6 +224,12 @@ class ObjectReceiver {
     return liveRevision_.load(std::memory_order_relaxed);
   }
   uint32_t gaps() const noexcept { return gaps_.load(std::memory_order_relaxed); }
+  /// False when start() could not bind the port — another instance owns it.
+  /// Worth checking: a receiver that never bound captures nothing, and the
+  /// only symptom downstream is an export that finds no objects.
+  bool isRunning() const noexcept {
+    return running_.load(std::memory_order_acquire);
+  }
   uint64_t blocksReceived() const noexcept {
     return blocks_.load(std::memory_order_relaxed);
   }

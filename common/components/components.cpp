@@ -24,6 +24,7 @@
 #include "src/SegmentedToggleImageButton.cpp"
 #include "src/SliderLabelAttachment.cpp"
 #include "src/TextEditorControlledDial.cpp"
+#include "src/friday/FridayPannerScope.cpp"
 #include "src/ambisonics_visualizers/AmbisonicsVisualizer.cpp"
 #include "src/ambisonics_visualizers/ColourLegend.cpp"
 #include "src/loudness_meter/LoudnessLevelBar.cpp"

@@ -297,6 +297,9 @@ class FridayObjectBus : public ::testing::Test {
   void SetUp() override {
     friday::sharedObjectReceiver().start();
     friday::sharedObjectReceiver().reset();
+    ASSERT_TRUE(friday::sharedObjectReceiver().isRunning())
+        << "the receiver could not bind the object port — something else in "
+           "this process, or another REAPER, already owns it";
   }
   void TearDown() override { friday::sharedObjectReceiver().stop(); }
 
@@ -312,7 +315,11 @@ class FridayObjectBus : public ::testing::Test {
   /// not a workaround for flakiness — it is what the capture tap does, which
   /// pings at ~60 Hz for as long as the plugin is loaded.
   static bool pumpUntil(const std::function<void()>& send,
-                        const std::function<bool()>& done, int ms = 5000) {
+                        const std::function<bool()>& done, int ms = 15000) {
+    // Generous, because it costs nothing when healthy — the loop returns the
+    // moment the condition holds. Under a loaded full-suite run the PUB/SUB
+    // handshake plus thread scheduling once overran a 5 s budget, and a test
+    // that fails only when the machine is busy is worse than a slow one.
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
     while (std::chrono::steady_clock::now() < deadline) {

@@ -34,7 +34,7 @@ class RoomViewScreen : public juce::Component,
 
   void paint(juce::Graphics& g) override;
   void updateSpeakerSetup(const Speakers::AudioElementSpeakerLayout& layout) {
-    room_->setSpeakers(layout);
+    room_->setSpeakerLayout(layout);
   }
 
  private:
@@ -46,8 +46,16 @@ class RoomViewScreen : public juce::Component,
   AudioElementPluginSyncClient* syncClient_;
   AudioElementSpatialLayoutRepository* audioElementSpatialLayoutRepository_;
   AudioElementParameterTree* parameterTree_;
-  std::unique_ptr<AudioElementPluginRearView> room_;
+  /// B5: the midnight-scope radar replaces the 3-D rear view. The five
+  /// elevation modes survive as the repository state that drives the
+  /// elevation listener, and are shown on the radar as constraint contours
+  /// rather than as a drawn surface — see BRIDGE-B2-PLAN.md §B5.
+  std::unique_ptr<FridayPannerScope> room_;
   SegmentedToggleImageButton selRoomElevation_;
+  /// Where the object actually is, in the terms the whole FRIDAY path speaks:
+  /// azimuth +left, elevation off the horizon. The X/Y/Z dials stay fully
+  /// editable and two-way — this is a readout, not a replacement for them.
+  juce::Label positionReadout_;
   std::function<void()> onRoomElevationChange_;
   const SpeakerMonitorData& spkrData_;
 };

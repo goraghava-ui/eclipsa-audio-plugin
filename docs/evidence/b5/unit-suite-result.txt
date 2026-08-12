@@ -1,0 +1,6 @@
+[==========] 297 tests from 62 test suites ran. (28135 ms total)
+[  FAILED  ] FileOutputTests.pp_validate_file_checksum (1 ms)
+[  FAILED  ] FileOutputTests.validate_file_checksum (0 ms)
+[  FAILED  ] LoggerTest.LogFromMultipleThreads (1 ms)
+[  FAILED  ] LoggerTest.LoggerInitMultipleCalls (0 ms)
+[  PASSED  ] 292 tests.

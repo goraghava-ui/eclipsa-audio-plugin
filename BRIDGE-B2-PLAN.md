@@ -777,3 +777,63 @@ milestone is not about.
 | 5 — regression | no code | — |
 
 **Nothing in steps 2–5 has been written yet.** Waiting on (a) and (b).
+
+### §B5 result — steps 2–4 done, gate PASSED
+
+Decisions taken (owner, 2026-08-12): the pad becomes the **primary control**
+with the numeric dials kept fully editable and two-way; **dome-only** drag math;
+the flat/tent/arch/dome/curve toggle **kept**.
+
+| Piece | File | Size |
+|---|---|---|
+| The radar | `common/components/src/friday/FridayPannerScope.{h,cpp}` | ~430 |
+| Palette tokens | `common/components/src/EclipsaColours.h` | +45 |
+| Chrome repaint | `AudioElementPluginEditor.cpp` (`CustomLookAndFeel`) | +60 |
+| Host swap + readout | `screens/RoomViewScreen.{h,cpp}` | ~40 changed |
+| Tests | `common/components/tests/FridayPannerScope_test.cpp` | ~280 |
+
+**Parity evidence:** `docs/evidence/b5/parity_az+30_el0.png` and
+`parity_az0_el60.png` — Bridge (JUCE) beside Studio (Qt), same poses, same
+speaker layout, dome constraint on both. Same geometry (rings 0.94/0.62/0.31,
+30° spokes, rim = horizon, centre = zenith), same palette, same conventions
+(+left azimuth, so +30° is upper-LEFT on both), same cues (notch+dot floor
+speakers, cyan height dots, layered amber orb, dashed floor projection + stem).
+
+### Two findings from building it
+
+**1. Eclipsa's room-view table and KALA disagree about the speakers.**
+`SpeakerLookup`'s geometry is a *box room for drawing*: its height layer works
+out at **26.6°**, not 45°, and it places the rear surrounds at **±135°** where
+KALA's `smpte_714_layout()` and Studio use **±150°**. The scope draws the
+layout KALA actually renders to, since that is what the exported file contains
+and what the parity gate compares against. The room views in the renderer
+plugin still use the old table — they are a different screen and out of scope
+here, but the disagreement is now on the record.
+
+**2. Painting from cached state produced a silently wrong screenshot.**
+The pad first refreshed its position only on its 30 Hz timer. In an offscreen
+render there is no message loop, so the first parity PNGs drew the object at
+its construction position while claiming to show az +30. Nothing errored. The
+pad now reads the parameters in `paint()` itself; the timer's only job is to
+notice a change and ask for a repaint. Anything that repaints without the timer
+having run — a resize, an occlusion, an offscreen render — is now correct.
+
+### Regression
+
+| Check | Before B5 | After B5 |
+|---|---|---|
+| B2-5 null vs Studio | −138.47 dBFS | **−138.47 dBFS, byte-identical `04f2b28c…`** |
+| captured azimuth | 30.173517° | **30.173517°** |
+| Bridge unit suite | 286 / 282 | **297 / 292** (+11: 6 geometry, 5 pad-as-control) |
+| — its 4 known failures | checksum ×2, Logger ×2 | **unchanged, same 4** |
+| REAPER scan + load | clean | **clean** — the B2 gate run instantiates both plugins |
+| kala-engine | 27 suites / 252 | **untouched by B5** |
+
+### B5 follow-up (noted, not done)
+
+Align the five Eclipsa elevation modes with Studio's constraint surfaces
+(Manual / Wedge / Dome / Ceiling) so a drag under any mode produces the motion
+that mode describes. Today the drag is dome for all of them, and the modes
+survive as (a) the repository state driving the elevation listener and (b) the
+contour rings the scope draws. `FridayPannerScope::radiusFraction` /
+`elevationFromRadius` are the two functions a per-mode surface would replace.
