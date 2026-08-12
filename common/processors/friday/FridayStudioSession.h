@@ -51,6 +51,18 @@ std::string buildSessionJson(const std::string& name, int sampleRate,
 /// Write `json` to `path`. Returns false on any I/O failure.
 bool writeSessionFile(const std::string& path, const std::string& json);
 
+/// Write `pcm` as a mono 32-bit-float WAV. Studio's ObjectTrack is a MONO
+/// object stem which it renders itself (studio/renderer.py `_load_mono`) --
+/// it is emphatically not the rendered bed Eclipsa writes per audio element,
+/// and handing it one would have Studio re-render an already-panned mix as a
+/// point source. Float32 so the handoff introduces no quantisation of its own.
+bool writeMonoWav(const std::string& path, const std::vector<float>& pcm,
+                  int sampleRate);
+
+/// Filesystem-safe stem filename for an object: `<base>_<name>.wav`.
+std::string stemPathFor(const std::string& sessionPath,
+                        const std::string& objectName);
+
 /// `<export>.iamf` -> `<export>.fstudio`; anything else just gets the suffix.
 std::string sessionPathFor(const std::string& exportFilePath);
 

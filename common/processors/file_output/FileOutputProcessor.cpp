@@ -275,14 +275,12 @@ void FileOutputProcessor::writeStudioHandoff(const FileExport& config) {
   const std::string sessionPath =
       friday::sessionPathFor(kExportFile.toStdString());
 
-  // Point every object at the per-audio-element WAV this export already wrote,
-  // so the handed-off session passes Session.validate() instead of opening
-  // with "missing file" problems. Match on name first -- the panner's layout
-  // name is the audio element it was assigned to -- and fall back to position,
-  // which is right for the common single-element case.
-  juce::OwnedArray<AudioElement> audioElements;
-  audioElementRepository_.getAll(audioElements);
-
+  // Write each captured object's own mono stem beside the session. Studio's
+  // ObjectTrack is a mono object it renders itself; the per-audio-element WAV
+  // Eclipsa writes is the RENDERED BED, so pointing at it would have Studio
+  // re-render an already-panned mix as a point source. Upstream also deletes
+  // those WAVs at the end of this same closeFileExport unless the user asked
+  // to keep them, so the path would dangle as well.
   std::vector<friday::SessionObject> objects;
   objects.reserve(captured.size());
   for (size_t i = 0; i < captured.size(); ++i) {
@@ -292,20 +290,12 @@ void FileOutputProcessor::writeStudioHandoff(const FileExport& config) {
                  : captured[i].name;
     o.keyframes = captured[i].keyframes;
 
-    int match = -1;
-    for (int e = 0; e < audioElements.size(); ++e) {
-      if (audioElements[e]->getName().toStdString() == captured[i].name) {
-        match = e;
-        break;
-      }
-    }
-    if (match < 0 && static_cast<int>(i) < audioElements.size()) {
-      match = static_cast<int>(i);
-    }
-    if (match >= 0) {
-      const juce::String kWav =
-          kExportFile + "_" + audioElements[match]->getName() + ".wav";
-      if (juce::File(kWav).existsAsFile()) o.file_path = kWav.toStdString();
+    const std::string stem = friday::stemPathFor(sessionPath, o.name);
+    if (friday::writeMonoWav(stem, captured[i].pcm,
+                             static_cast<int>(sampleRate_))) {
+      o.file_path = stem;
+    } else {
+      LOG_ERROR(0, "Studio handoff: cannot write stem " + stem);
     }
     objects.push_back(std::move(o));
   }

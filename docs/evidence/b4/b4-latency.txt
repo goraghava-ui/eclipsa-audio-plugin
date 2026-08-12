@@ -1,0 +1,12 @@
+  clock calibration uncertainty: +/- 1.849 ms
+
+  # step      azimuth received   latency ms
+  1 az-45        45.0000        20.43
+  2 az+00        -0.0000        36.25
+  3 az+60        55.9541        13.75
+  4 az-20       -19.8852        31.57
+  5 az+90        90.0000         7.28
+  6 az+15        15.1541        23.81
+
+  n=6  min=7.28 ms  median=23.81 ms  max=36.25 ms
+  GATE (<100 ms, worst case): PASS at 36.25 ms

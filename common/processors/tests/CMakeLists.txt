@@ -44,4 +44,5 @@ endif()
 # is compiled in; with FRIDAY_KALA_EXPORT=OFF the code under test is not built.
 if(FRIDAY_KALA_EXPORT)
     eclipsa_add_test(test_friday_object_capture FridayObjectCapture_test.cpp "processors;kala_cabi")
+    eclipsa_add_test(test_friday_studio_link FridayStudioLink_test.cpp "processors;kala_cabi")
 endif()

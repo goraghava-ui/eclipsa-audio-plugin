@@ -1,0 +1,22 @@
+  B: /data/build/b4/handoff-render/bridge_b4.iamf
+  96000 frames, 12 ch @ 48 kHz
+
+   ch name   A rms dBFS  B rms dBFS  max|delta| dBFS
+    1 L          -18.92      -18.92          -128.93
+    2 R            -inf        -inf             -inf
+    3 C          -19.10      -19.10          -126.43
+    4 LFE          -inf        -inf             -inf
+    5 Ls           -inf        -inf             -inf
+    6 Rs           -inf        -inf             -inf
+    7 Lrs          -inf        -inf             -inf
+    8 Rrs          -inf        -inf             -inf
+    9 TFL          -inf        -inf             -inf
+   10 TFR          -inf        -inf             -inf
+   11 TRL          -inf        -inf             -inf
+   12 TRR          -inf        -inf             -inf
+
+  worst channel: C (ch3) at -126.43 dBFS
+  sample-exact:  False
+
+  GATE GA (-90 dBFS): PASS
+

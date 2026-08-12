@@ -1,0 +1,11 @@
+=== B4 gate: live link + handoff ===
+audio device running=1 mode=Dummy Audio bsize=1024 srate=48000
+clock calibrated: uncertainty +/- 1.849 ms
+renderer state applied=true
+panner state applied=true
+transport rolling, playstate=1
+pans issued=6
+bounce issued
+play issued
+iamf exists=true
+fstudio exists=true

@@ -34,6 +34,7 @@
 
 #include "../processor_base/ProcessorBase.h"
 #include "data_structures/src/AudioElementParameterTree.h"
+#include "data_structures/src/ParameterMetaData.h"
 #include "FridayObjectTransport.h"
 #include "data_repository/implementation/AudioElementSpatialLayoutRepository.h"
 
@@ -43,7 +44,31 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
       AudioElementSpatialLayoutRepository* spatialLayoutRepository,
       AudioElementParameterTree* automationParameterTree)
       : spatialLayoutRepository_(spatialLayoutRepository),
-        automationParameterTree_(automationParameterTree) {}
+        automationParameterTree_(automationParameterTree) {
+    // Read positions from the parameters' own atomics, NOT from
+    // AudioElementParameterTree's getters. Those go through
+    // getParameterAsValue(), i.e. the APVTS ValueTree, which the host->tree
+    // sync only flushes from a message-thread timer: measured worst case was
+    // 211 ms from a DAW pan reaching Studio, twice the V2-02 gate, and the
+    // getters also read a ValueTree on the audio thread. getRawParameterValue
+    // is JUCE's documented audio-thread path and updates synchronously.
+    //
+    // The values are identical either way — X/Y/Z are AudioParameterInt, so
+    // the raw atomic already holds the same integer the getters return. Only
+    // the latency and the thread-safety change.
+    if (automationParameterTree_ != nullptr) {
+      x_ = automationParameterTree_->getRawParameterValue(
+          AutoParamMetaData::xPosition);
+      y_ = automationParameterTree_->getRawParameterValue(
+          AutoParamMetaData::yPosition);
+      z_ = automationParameterTree_->getRawParameterValue(
+          AutoParamMetaData::zPosition);
+      volume_ = automationParameterTree_->getRawParameterValue(
+          AutoParamMetaData::volumeId);
+      unmute_ = automationParameterTree_->getRawParameterValue(
+          AutoParamMetaData::unmuteId);
+    }
+  }
 
   ~FridayObjectCaptureProcessor() override = default;
 
@@ -70,30 +95,35 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
       return;
     }
 
+    const bool offline = offline_.load(std::memory_order_acquire);
+    // Throttle BEFORE reading the repository: get() walks a ValueTree and
+    // builds juce::Strings, so a realtime ping should not pay for it on every
+    // block. An offline capture reads every block — that is the automation.
+    if (!offline && ++liveTick_ < liveInterval_) return;
+
     const AudioElementSpatialLayout layout = spatialLayoutRepository_->get();
     if (layout.getFirstChannel() < 0) {
       return;  // panner not assigned to an Audio Element yet — nothing to send
     }
-    if (!automationParameterTree_->getUnmute()) return;
+    if (unmute_ != nullptr &&
+        unmute_->load(std::memory_order_relaxed) < 0.5f) {
+      return;
+    }
 
     // Snapshot the name into a plain buffer: the wire header is POD and the
     // audio thread must not touch juce::String's ref-counted storage.
     updateNameCache(layout.getName());
 
-    const float x = static_cast<float>(automationParameterTree_->getXPosition());
-    const float y = static_cast<float>(automationParameterTree_->getYPosition());
-    const float z = static_cast<float>(automationParameterTree_->getZPosition());
-
     float az = 0.0f, el = 0.0f;
-    cartesianToPolarDegrees(x, y, z, az, el);
+    cartesianToPolarDegrees(rawParam(x_), rawParam(y_), rawParam(z_), az, el);
 
     juce::Uuid id = layout.getAudioElementId();
     uint8_t uuid[16];
     std::memcpy(uuid, id.getRawData(), 16);
 
-    const float gain = automationParameterTree_->getVolume();
+    const float gain = rawParam(volume_);
 
-    if (offline_.load(std::memory_order_acquire)) {
+    if (offline) {
       publisher_.publish(uuid, az, el, /*spread=*/0.0f, gain,
                          buffer.getReadPointer(0),
                          static_cast<uint32_t>(buffer.getNumSamples()),
@@ -104,7 +134,6 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     // Realtime: a position-only ping for the live Studio link (V2-02). No PCM,
     // so this costs a fixed ~72 bytes into the ring and nothing else; the
     // export never sees these blocks (they carry no kFlagOffline).
-    if (++liveTick_ < liveInterval_) return;
     liveTick_ = 0;
     publisher_.publish(uuid, az, el, /*spread=*/0.0f, gain, nullptr, 0,
                        /*flags=*/0, name_);
@@ -169,8 +198,18 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     for (; i < sizeof(name_); ++i) name_[i] = '\0';
   }
 
+  static float rawParam(const std::atomic<float>* p) noexcept {
+    return p == nullptr ? 0.0f : p->load(std::memory_order_relaxed);
+  }
+
   AudioElementSpatialLayoutRepository* spatialLayoutRepository_;
   AudioElementParameterTree* automationParameterTree_;
+  /// Owned by the parameter tree; valid for this processor's whole lifetime.
+  std::atomic<float>* x_ = nullptr;
+  std::atomic<float>* y_ = nullptr;
+  std::atomic<float>* z_ = nullptr;
+  std::atomic<float>* volume_ = nullptr;
+  std::atomic<float>* unmute_ = nullptr;
   std::atomic<bool> offline_{false};
   char name_[32] = {};
   int liveTick_ = 0;

@@ -1,0 +1,14 @@
+  file: /data/build/b4/bridge_b4.fstudio
+  loaded: name='bridge_b4' sample_rate=48000 target_lkfs=-16.0 language='en'
+  beds=0 objects=1
+  object 'source'
+    file_path: /data/build/b4/bridge_b4_source.wav
+    keyframes: 1
+      t=0.000000  az=+15.1541  el=+0.0000  spread=0.000  gain=+0.00  linear
+
+  validate(): clean (0 problems)
+
+  captured pan vs the .fstudio's last keyframe:
+    'source': az +15.1541 vs +15.1541 (d=0.0000), el +0.0000 vs +0.0000 (d=0.0000)
+
+  GATE (.fstudio opens in Studio, clean, positions match): PASS

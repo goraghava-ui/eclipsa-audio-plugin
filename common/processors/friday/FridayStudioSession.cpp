@@ -94,6 +94,70 @@ bool writeSessionFile(const std::string& path, const std::string& json) {
   return closed && written == json.size();
 }
 
+namespace {
+
+void put32(std::string& out, uint32_t v) {
+  out += static_cast<char>(v & 0xff);
+  out += static_cast<char>((v >> 8) & 0xff);
+  out += static_cast<char>((v >> 16) & 0xff);
+  out += static_cast<char>((v >> 24) & 0xff);
+}
+
+void put16(std::string& out, uint16_t v) {
+  out += static_cast<char>(v & 0xff);
+  out += static_cast<char>((v >> 8) & 0xff);
+}
+
+}  // namespace
+
+bool writeMonoWav(const std::string& path, const std::vector<float>& pcm,
+                  int sampleRate) {
+  // Hand-rolled RIFF rather than juce::WavAudioFormat so this file stays free
+  // of JUCE and unit-testable on its own. WAVE_FORMAT_IEEE_FLOAT (3), 1 ch.
+  const uint32_t dataBytes =
+      static_cast<uint32_t>(pcm.size() * sizeof(float));
+  std::string hdr;
+  hdr += "RIFF";
+  put32(hdr, 36 + dataBytes);
+  hdr += "WAVE";
+  hdr += "fmt ";
+  put32(hdr, 16);
+  put16(hdr, 3);                                   // IEEE float
+  put16(hdr, 1);                                   // mono
+  put32(hdr, static_cast<uint32_t>(sampleRate));
+  put32(hdr, static_cast<uint32_t>(sampleRate) * 4);  // byte rate
+  put16(hdr, 4);                                   // block align
+  put16(hdr, 32);                                  // bits per sample
+  hdr += "data";
+  put32(hdr, dataBytes);
+
+  std::FILE* f = std::fopen(path.c_str(), "wb");
+  if (f == nullptr) return false;
+  bool ok = std::fwrite(hdr.data(), 1, hdr.size(), f) == hdr.size();
+  if (ok && dataBytes > 0) {
+    ok = std::fwrite(pcm.data(), 1, dataBytes, f) == dataBytes;
+  }
+  return (std::fclose(f) == 0) && ok;
+}
+
+std::string stemPathFor(const std::string& sessionPath,
+                        const std::string& objectName) {
+  const std::string kSuffix = ".fstudio";
+  std::string base = sessionPath;
+  if (base.size() >= kSuffix.size() &&
+      base.compare(base.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0) {
+    base = base.substr(0, base.size() - kSuffix.size());
+  }
+  std::string safe;
+  for (const char c : objectName) {
+    const bool plain = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                       (c >= '0' && c <= '9') || c == '-' || c == '_';
+    safe += plain ? c : '_';
+  }
+  if (safe.empty()) safe = "object";
+  return base + "_" + safe + ".wav";
+}
+
 std::string sessionPathFor(const std::string& exportFilePath) {
   const std::string kSuffix = ".iamf";
   if (exportFilePath.size() >= kSuffix.size() &&

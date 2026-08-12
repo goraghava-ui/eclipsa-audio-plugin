@@ -1,0 +1,145 @@
+{
+ "events": [
+  {
+   "t": 1786531674.821654,
+   "msg": {
+    "type": "_state",
+    "connected": true
+   }
+  },
+  {
+   "t": 1786531674.821715,
+   "msg": {
+    "type": "hello",
+    "product": "friday-bridge",
+    "version": 1,
+    "session": "REAPER"
+   }
+  },
+  {
+   "t": 1786531674.821735,
+   "msg": {
+    "type": "scene",
+    "objects": []
+   }
+  },
+  {
+   "t": 1786531674.920842,
+   "msg": {
+    "type": "scene",
+    "objects": [
+     {
+      "name": "Audio",
+      "azimuth": 0.0,
+      "elevation": 0.0,
+      "spread": 0.0,
+      "gain_db": 0.0
+     }
+    ]
+   }
+  },
+  {
+   "t": 1786531674.98709,
+   "msg": {
+    "type": "scene",
+    "objects": [
+     {
+      "name": "source",
+      "azimuth": 0.0,
+      "elevation": 0.0,
+      "spread": 0.0,
+      "gain_db": 0.0
+     }
+    ]
+   }
+  },
+  {
+   "t": 1786531677.834483,
+   "msg": {
+    "type": "pan",
+    "index": 0,
+    "name": "source",
+    "azimuth": 45.0,
+    "elevation": 0.0,
+    "spread": 0.0,
+    "gain_db": 0.0
+   }
+  },
+  {
+   "t": 1786531678.23173,
+   "msg": {
+    "type": "pan",
+    "index": 0,
+    "name": "source",
+    "azimuth": -0.0,
+    "elevation": 0.0,
+    "spread": 0.0,
+    "gain_db": 0.0
+   }
+  },
+  {
+   "t": 1786531678.595868,
+   "msg": {
+    "type": "pan",
+    "index": 0,
+    "name": "source",
+    "azimuth": 55.9541,
+    "elevation": 0.0,
+    "spread": 0.0,
+    "gain_db": 0.0
+   }
+  },
+  {
+   "t": 1786531678.993305,
+   "msg": {
+    "type": "pan",
+    "index": 0,
+    "name": "source",
+    "azimuth": -19.8852,
+    "elevation": 0.0,
+    "spread": 0.0,
+    "gain_db": 0.0
+   }
+  },
+  {
+   "t": 1786531679.357337,
+   "msg": {
+    "type": "pan",
+    "index": 0,
+    "name": "source",
+    "azimuth": 90.0,
+    "elevation": 0.0,
+    "spread": 0.0,
+    "gain_db": 0.0
+   }
+  },
+  {
+   "t": 1786531679.754671,
+   "msg": {
+    "type": "pan",
+    "index": 0,
+    "name": "source",
+    "azimuth": 15.1541,
+    "elevation": 0.0,
+    "spread": 0.0,
+    "gain_db": 0.0
+   }
+  },
+  {
+   "t": 1786531681.144489,
+   "msg": {
+    "type": "handoff",
+    "path": "/data/build/b4/bridge_b4.fstudio"
+   }
+  }
+ ],
+ "final_remote": [
+  {
+   "name": "source",
+   "azimuth": 15.1541,
+   "elevation": 0.0,
+   "spread": 0.0,
+   "gain_db": 0.0
+  }
+ ]
+}
