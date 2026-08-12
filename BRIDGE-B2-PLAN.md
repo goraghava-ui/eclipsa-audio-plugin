@@ -951,3 +951,21 @@ hand-placed positions, having no meaningful polar angle.
 This is **drawing only**. `SpeakerLookup` lives in `components/room_views/` and
 is read by `PerspectiveRoomView` to place dots; no renderer, panner or export
 path reads it. Eclipsa's monitoring DSP is untouched.
+
+### §B6 regression
+
+| Check | Result |
+|---|---|
+| B2-5 null, az +30.000 vs **original** `B2_ref.iamf` | **−inf dBFS, sample-exact** (§B6-1 gate) |
+| B2-5 null, old harness (az 30.000723) vs `B2_ref.iamf` | **−109.53 dBFS PASS** |
+| Bridge unit suite | **311 tests / 305 passed** (was 297/292) |
+| — its 4 known failures | **unchanged** — upstream checksum refs, Logger ×2 |
+| kala-engine | **27 suites / 252 tests, 0 failed** |
+| REAPER scan + load | **clean** — the gate runs instantiate both plugins |
+
+One evidence file is now **obsolete**: `ref-bridgeaz/B2_ref_(bridge_az).iamf`,
+the reference regenerated at the captured 30.173517°. With continuous parameters
+the old harness lands on 30.000723 instead, so it no longer matches that
+reference (−62.14 dBFS) and matches the original one instead (−109.53 dBFS). The
+regression target for B2-5 is the **original** `B2_ref.iamf` from here on; the
+regenerated one is kept only as the record of why it existed.

@@ -1,0 +1,20 @@
+
+   ch name   A rms dBFS  B rms dBFS  max|delta| dBFS
+    1 L          -16.00      -16.00          -138.47
+    2 R            -inf        -inf             -inf
+    3 C            -inf        -inf             -inf
+    4 LFE          -inf        -inf             -inf
+    5 Ls        -112.72        -inf          -109.53
+    6 Rs           -inf        -inf             -inf
+    7 Lrs          -inf        -inf             -inf
+    8 Rrs          -inf        -inf             -inf
+    9 TFL          -inf        -inf             -inf
+   10 TFR          -inf        -inf             -inf
+   11 TRL          -inf        -inf             -inf
+   12 TRR          -inf        -inf             -inf
+
+  worst channel: Ls (ch5) at -109.53 dBFS
+  sample-exact:  False
+
+  GATE GA (-90 dBFS): PASS
+
