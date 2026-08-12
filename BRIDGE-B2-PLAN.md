@@ -682,3 +682,98 @@ round-trip null and a sample `.fstudio`.
 - Handoff fires on export only. A menu/parameter trigger for "hand off without
   exporting" is not wired.
 - One client at a time, localhost only — that is the protocol's own limit.
+
+---
+
+## §B5. Midnight-scope panner UI — inventory and swap plan
+
+**Gate:** the FRIDAY Panner (element plugin) pad reaches design parity with
+Studio's `PannerScope`; a side-by-side screenshot pair is the evidence.
+
+### What is there now
+
+The element plugin's editor is `AudioElementPluginEditor` (397 lines) hosting
+three screens side by side:
+
+| Component | Role | Lines | B5 verdict |
+|---|---|---|---|
+| `AudioElementPluginEditor` | window chrome, title bar, track-name box, audio-element selector, screen layout | 397 + 116 h | **repaint** — LookAndFeel + colours |
+| `screens/RoomViewScreen` | hosts the pad, elevation-mode toggle | 154 + 52 h | **repaint** — swaps which pad it hosts |
+| `components/room_views/AudioElementPluginRearView` | **the pad itself** | part of `PerspectiveRoomViews.cpp` (469) | **replace** — new component |
+| `components/room_views/PerspectiveRoomView` (base) | 3-D room: faces, gridlines, 4×4 transforms, speaker/track projection | 314 + 136 h | **untouched** — still used by the renderer plugin's four views |
+| `screens/PositionSelectionScreen` | X/Y/Z dials, spread, LFE | 171 + 76 h | **repaint** — its own `PositionSelectionLookAndFeel` already exists |
+| `screens/TrackMonitorScreen` | per-track meters | 155 + 59 h | **repaint** — meter colours to the theme's level law |
+| `components/src/EclipsaColours.h` | the palette everything reads | 1 header | **extend** — add the midnight-scope tokens beside the existing ones |
+
+### How X/Y/Z reach the pad today
+
+`AutoParamMetaData::CreateStaticParameterLayout()` makes X, Y and Z as
+**`juce::AudioParameterInt`** over [−50, +50], inside
+`AudioElementParameterTree` (an `AudioProcessorValueTreeState`).
+
+- The current pad is **display-only.** There is no `mouseDown`/`mouseDrag`
+  anywhere in `room_views/` or `audioelementplugin/src/` — positions are typed
+  or nudged in `PositionSelectionScreen`'s dials, and the room view only draws.
+  **Dragging is new behaviour, not a re-skin of existing behaviour.**
+- The UI reads positions through the tree's getters
+  (`getParameterAsValue()` → ValueTree). B4 already established that path is a
+  message-thread-timer behind and not audio-thread safe; the capture tap now
+  uses `getRawParameterValue`. The pad should write through
+  `getParameter(id)->setValueNotifyingHost()` so the host sees automation and
+  undo exactly as it does from the dials.
+
+### Verdict: this is more than a re-skin — **STOPPING for your call**
+
+The brief's own threshold is "custom LookAndFeel + a custom pad component", and
+this is both, plus one thing the threshold did not anticipate:
+
+1. **A new custom component** (~400–500 lines) painting the radar: radial
+   gradient + vignette, rings at 0.94/0.62/0.31, 30° spokes, FRONT/L/R/REAR
+   compass, speakers as notch+dot / cyan dots, layered amber glow orb with a
+   white-hot core, dashed floor-projection ring + stem, motion trail.
+2. **A custom LookAndFeel** for sliders, labels and combo boxes, plus new
+   palette tokens.
+3. **New interaction that does not exist today**: drag-to-pan, with the dome
+   projection (centre = zenith) mapped back into integer X/Y/Z. This is where
+   the risk is — see below.
+
+### The two decisions I need from you
+
+**(a) Does the pad become the primary control, or stay a display?**
+Adding drag makes the pad authoritative and the dials a readout. That is what
+Studio's scope does and what "design parity" implies, but it changes how the
+plugin is *operated*, not just how it looks. Upstream deliberately kept
+position entry numeric.
+
+**(b) Elevation mapping — the pad and the parameters do not agree.**
+Studio's scope maps elevation to *radius* (centre = zenith, dome projection).
+Eclipsa's Z is an independent [−50, +50] parameter, and
+`RoomViewScreen` has an elevation-mode toggle with five modes (flat, tent,
+arch, dome, curve) that already reinterpret height. Parity means picking one:
+
+- **dome-only** — radius *is* elevation, matching Studio exactly; the existing
+  elevation-mode toggle becomes meaningless and should go.
+- **keep the modes** — the pad's radius follows whichever mode is selected,
+  which is richer but is *not* pixel-parity with Studio's scope.
+
+I recommend **dome-only for the pad's drag math, with the mode toggle
+retained for the other modes' rendering**, so the screenshot pair is a true
+parity comparison and no existing feature is silently removed. Say the word if
+you would rather I drop the toggle entirely.
+
+### What I will not do without being asked
+
+Touch `PerspectiveRoomView` itself — the renderer plugin's Top/Side/Rear/Iso
+views inherit from it, and a change there is a change to a screen this
+milestone is not about.
+
+### Cost estimate
+
+| Step | Files | Rough size |
+|---|---|---|
+| 2 — pad component + drag | 1 new `.h/.cpp` pair, `RoomViewScreen` swap | ~500 lines new |
+| 3 — LookAndFeel + palette | `EclipsaColours.h`, 1 new LookAndFeel, 3 screens repainted | ~250 lines |
+| 4 — screenshots | offscreen render harness + Studio render | evidence only |
+| 5 — regression | no code | — |
+
+**Nothing in steps 2–5 has been written yet.** Waiting on (a) and (b).

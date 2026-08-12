@@ -123,6 +123,36 @@ Modules Eclipsa actually uses:
 The permissive ISC subset is **not** sufficient: a VST3 plugin cannot be built
 without the plugin-client/GUI modules.
 
+#### 1.1.1 B5 UI code — checked 2026-08-12, before writing any
+
+Asked before shipping UI: does the fork's JUCE usage fall under Eclipsa's
+existing licence arrangement?
+
+**It does, and B5 changes nothing about it.** The answer does not turn on how
+much UI there is, because JUCE's terms are per-*binary*, not per-file. The
+Bridge VST3s already link JUCE statically for their whole editor — every screen
+in `audioelementplugin/src/screens/` and `rendererplugin/src/screens/`, every
+component in `common/components/`, `juce_gui_basics` and `juce_graphics`. B5
+repaints components that already exist and adds new ones in the same modules.
+It introduces **no new JUCE module, no new third-party UI dependency, and no
+new distribution surface**.
+
+So the position recorded above stands unchanged and un-widened:
+
+- Pinned to **JUCE 7.0.12** → the copyleft fallback is **GPL-3.0-only**, not
+  AGPL (that is JUCE 8).
+- Owner's 2026-08-10 decision: **develop under GPLv3, no distribution**;
+  commercial-vs-open deferred to first external release.
+- The decision point is unmoved by B5: it arrives when a binary is first
+  distributed, whatever its UI looks like.
+
+One thing B5 must NOT do: copy Studio's UI code. Studio's `studio/ui/` is
+PySide6/Qt (LGPL/commercial) and its own product. B5 reads it as a **design
+reference** — palette values, geometry, conventions — and reimplements in JUCE.
+Numbers like `#ffb020` and ring fractions are facts about a visual design, not
+copyrightable expression, and no Qt code, header or asset is copied into this
+tree. That keeps Qt entirely out of the Bridge's dependency graph.
+
 > **VERDICT: JUCE licence mode = OWNER DECISION.**
 > **JUCE 7 commercial (Indie/Pro) vs releasing FRIDAY Bridge under GPLv3.**
 > Budgeted in **PRD-v2 §8.6**. Not a technical blocker — nothing to remove or
