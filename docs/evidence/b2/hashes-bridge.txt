@@ -1,4 +1,7 @@
 04f2b28ccaaef80eea18cbc5c68c2b5154c9638d1c4615334ea706ec835177ed  bridge.iamf
 a9e7d69c0800ce212fc9aecc77cfb27eb4d1bbdb0969f732a621e296f0471d02  ref-bridgeaz/B2_ref_(bridge_az).iamf
 17f60f17600c410f010716d2941418d08bf25a8efa9fda9090db4ba7d443d029  ref-out/B2_ref.iamf
-e4bd20333df63ca3c47b18dcd163ff85bfd59e41d8b34ac9e214e23fbb0d77ff  /data/build/b1-gate/gate.wav
+
+gate.wav (B1 regression) is deliberately absent: REAPER stamps a BWF bext
+chunk with the origination date/time, so its hash changes every run. See
+b1-regression-measurements.txt for the stable criterion.

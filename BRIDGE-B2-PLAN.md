@@ -532,6 +532,14 @@ problems, only one of them from this work:
 Neither has been fixed here — they are upstream/bench issues that predate the
 B2 work and are recorded rather than quietly absorbed.
 
+Both gates were re-run against the committed tree after the unit-suite work
+changed `FileOutputProcessor`. `bridge.iamf` came out byte-identical
+(`04f2b28c…`) from a capture of 105 blocks where the first run captured 107 —
+the trim is what makes the result independent of the host's flush jitter. The
+B1 regression re-ran to the same per-channel numbers; its WAV **hash** is not
+reproducible, because REAPER stamps a BWF `bext` chunk with the origination
+date and time.
+
 Deviations from PRD-v2 §6 Phase A, carried in the commit message:
 
 - The Studio reference for B2-5 is re-exported at azimuth **30.173517°**, the
