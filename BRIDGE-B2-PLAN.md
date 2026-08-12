@@ -550,3 +550,135 @@ Deviations from PRD-v2 §6 Phase A, carried in the commit message:
   (`IamfBufferedReader_test.cpp` → `IAMFBufferedReader_test.cpp`) before it
   would configure on Linux at all; that is portability defect #5 of the same
   class as the four in `docs/B1-LINUX-EVIDENCE.md`.
+
+---
+
+## 15. B4 / V2-02 — Bridge ⇄ Studio handoff and live scope IPC
+
+**Gate:** pan in REAPER → Studio PannerScope in under 100 ms, and a `.fstudio`
+written by the Bridge opens in Studio with the same objects and positions.
+
+**Result: PASS on both halves — 36.25 ms worst case, and a session that not
+only opens clean but round-trips.**
+
+The wire contract is Studio's, documented in
+`friday-studio/studio/bridge_link.py` (NDJSON over TCP to `127.0.0.1:47800`,
+one-way Bridge → Studio, protocol v1). This fork implements the sending half.
+Per V2-01 the link is transport and UI only: it carries no DSP and computes no
+positions, it reads the same captured-position source the KALA export uses.
+
+| Piece | File |
+|---|---|
+| Sender: connect, backoff, hello/scene/pan/handoff/bye | `common/processors/friday/FridayStudioLink.{h,cpp}` |
+| `.fstudio` + mono object stems | `common/processors/friday/FridayStudioSession.{h,cpp}` |
+| Wire v2 (flags, name), live position map | `common/processors/friday/FridayObjectTransport.{h,cpp}` |
+| Realtime pings vs offline capture | `common/processors/friday/FridayObjectCaptureProcessor.h` |
+| Link start + handoff on export | `common/processors/file_output/FileOutputProcessor.cpp` |
+
+### One stream, two consumers
+
+The B2 tap only published while the host was non-realtime, which is exactly
+wrong for a live link: nothing would reach Studio until the user bounced.
+Making it publish always, without reopening the B2 null, needed the two uses
+kept separable. The wire header goes to v2 with a `flags` field:
+
+- **`kFlagOffline`** blocks carry PCM and are the only ones the exporter
+  accumulates. The deliverable is unchanged.
+- **realtime** blocks are position-only pings (`frames == 0`, ~72 bytes)
+  throttled to ~60 Hz at the tap, feeding a live map that survives `reset()`
+  so the scope does not blink when an export arms.
+
+Two traps that fell out of that, both of which would have been silent:
+
+- `blocksReceived()` counts **offline** blocks only. `drain()` waits for the
+  stream to go quiet, and realtime pings never stop, so counting them would
+  have made every export sit out the full 5 s cap.
+- the export accumulator ignores realtime blocks entirely. Keyed by uuid, one
+  ping arriving during the post-bounce drain would have overwritten the
+  exported object's azimuth with wherever the user's mouse had drifted to.
+
+### Latency — and the 211 ms that had to be fixed
+
+The first measured run **FAILED at 211 ms worst case**, twice the gate. The
+measurement was not at fault: the harness calibrates REAPER's monotonic clock
+against the wall clock once, bracketed, and reported ±1.8 ms.
+
+The cause was upstream's parameter access. `AudioElementParameterTree`'s
+getters read positions through `getParameterAsValue()` — the APVTS **ValueTree**
+— which the host→tree sync only flushes from a message-thread timer. The tap
+now reads the parameters' own atomics with `getRawParameterValue`, JUCE's
+documented audio-thread path, which also takes a ValueTree read off the audio
+thread. The captured *values* are identical either way (X/Y/Z are
+`AudioParameterInt`, so the atomic already holds the same integer), which is
+why B2 is unaffected — confirmed byte-identical below.
+
+| | worst | median | min |
+|---|---|---|---|
+| through the APVTS ValueTree | 210.65 ms | 95.55 ms | 51.05 ms |
+| through the parameter atomics | **36.25 ms** | 23.81 ms | 7.28 ms |
+
+Remaining budget at 36 ms: one dummy-device block (1024 @ 48 kHz = 21 ms), the
+tap's ~60 Hz ping, ZeroMQ, and the sender's 30 Hz tick (~33 ms). Local TCP and
+the Python callback are under a millisecond.
+
+Measuring it honestly needed a harness fix too: timestamping each pan with
+`io.popen("date")` put the fork of a multi-hundred-MB process inside every
+measurement, and inflated the first run by ~20 ms on top of the real latency.
+
+### The handoff, and what an ObjectTrack actually is
+
+The first implementation pointed each object at the per-audio-element WAV the
+export already writes. That was wrong twice over:
+
+1. Studio's `ObjectTrack.file_path` is a **mono object stem** which Studio
+   renders itself (`studio/renderer.py` `_load_mono`). The per-element WAV is
+   the already-rendered 12-channel bed — handing it over would have Studio
+   re-render a finished mix as a point source.
+2. Upstream **deletes** those WAVs at the end of the same `closeFileExport`
+   unless `exportAudioElements` is set, so the path dangled. That is how it
+   surfaced: `Session.validate()` reporting a missing file.
+
+The Bridge now writes each captured object's own mono float32 stem beside the
+session, so nothing is requantised and the session validates clean.
+
+```
+  loaded: name='bridge_b4' sample_rate=48000 target_lkfs=-16.0 language='en'
+  object 'source'  file_path: /data/build/b4/bridge_b4_source.wav
+    t=0.000000  az=+15.1541  el=+0.0000  spread=0.000  gain=+0.00  linear
+  validate(): clean (0 problems)
+  captured pan vs the .fstudio's last keyframe:
+    'source': az +15.1541 vs +15.1541 (d=0.0000)
+```
+
+**The handoff round-trips.** `studio_cli export` renders the handed-off
+`.fstudio`, and that render nulls against the Bridge's own `.iamf` at
+**−126.43 dBFS** — same objects, same positions, same audio, through a
+different product. That is a much stronger claim than "the file opens".
+
+Keyframes come from a captured timeline (a point whenever the position moves),
+not one frozen value. The gate's own bounce is a static pan, so the sample
+session carries one keyframe — correct, not a truncation.
+
+### B4 regression table
+
+| Check | Before B4 | After B4 |
+|---|---|---|
+| B2-5 null vs Studio | −138.47 dBFS | **−138.47 dBFS, file byte-identical `04f2b28c…`** |
+| captured azimuth | 30.173517° | **30.173517°** |
+| Bridge unit suite | 267 / 263 passed | **281 / 277 passed** (+12 link, +2) |
+| — its 4 known failures | checksum ×2, Logger ×2 | **unchanged, same 4** |
+| kala-engine | 27 suites / 252 tests | **27 suites / 252 tests, 0 failed** |
+| friday-studio | 141 passed | **141 passed** (`8d6e54a`) |
+
+Evidence in `docs/evidence/b4/`: the harness, the receiver, the two analysis
+scripts, the raw message log, the latency table, the validation output, the
+round-trip null and a sample `.fstudio`.
+
+### Not done
+
+- The wire carries one position per block and Studio's scope shows the latest;
+  per-block automation *inside* a single Studio render still needs the
+  block-ramped path noted in §11.
+- Handoff fires on export only. A menu/parameter trigger for "hand off without
+  exporting" is not wired.
+- One client at a time, localhost only — that is the protocol's own limit.

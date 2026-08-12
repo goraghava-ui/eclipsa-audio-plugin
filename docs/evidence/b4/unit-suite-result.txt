@@ -1,0 +1,12 @@
+[==========] 281 tests from 59 test suites ran. (27554 ms total)
+[  FAILED  ] FileOutputTests.pp_validate_file_checksum (1 ms)
+[  FAILED  ] FileOutputTests.validate_file_checksum (0 ms)
+[  FAILED  ] LoggerTest.LogFromMultipleThreads (1 ms)
+[  FAILED  ] LoggerTest.LoggerInitMultipleCalls (0 ms)
+[  PASSED  ] 277 tests.
+
+FRIDAY Bridge unit suite after B4, Linux, FRIDAY_KALA_EXPORT=ON, run from <src>/build.
+281 tests / 277 passed, up from 267/263: +12 FridayStudioLink, +2 elsewhere.
+The same 4 failures as before B4 -- upstream checksum references recorded on a
+macOS toolchain, and two Logger tests that fail in isolation. See
+BRIDGE-B2-PLAN.md section 14.
