@@ -167,21 +167,23 @@ float FridayPannerScope::radius() const {
   return juce::jmax(40.0f, juce::jmin(getWidth(), getHeight()) * 0.5f - kMargin);
 }
 
+juce::Point<float> FridayPannerScope::toPointAtRadius(float azimuthDeg,
+                                                      float radiusFrac) const {
+  const juce::Point<float> c = centre();
+  // Clamp to the rim: X and Y each reach 50, so their corner is 1.41 of a
+  // radius and would otherwise draw outside the scope.
+  const float f = juce::jlimit(0.12f, 1.0f, radiusFrac) * kRimFraction;
+  const float r = radius() * f;
+  const float a = azimuthDeg * kRad;
+  return {c.x - std::sin(a) * r, c.y - std::cos(a) * r};
+}
+
 juce::Point<float> FridayPannerScope::toPoint(float azimuthDeg,
                                               float elevationDeg) const {
   const juce::Point<float> c = centre();
   const float r = radius() * radiusFraction(elevationDeg);
   const float a = azimuthDeg * kRad;
   return {c.x - std::sin(a) * r, c.y - std::cos(a) * r};
-}
-
-void FridayPannerScope::pointToAzimuthElevation(juce::Point<float> p,
-                                                float& azimuthDeg,
-                                                float& elevationDeg) const {
-  const juce::Point<float> c = centre();
-  azimuthDeg = std::atan2(-(p.x - c.x), -(p.y - c.y)) * kDeg;
-  const float rim = juce::jmax(radius() * kRimFraction, 1e-6f);
-  elevationDeg = elevationFromRadius(c.getDistanceFrom(p) / rim);
 }
 
 //======================================================================
@@ -196,31 +198,47 @@ float FridayPannerScope::readParam(const juce::String& id) const {
 }
 
 void FridayPannerScope::refreshFromParameters() {
-  xyzToAzimuthElevation(readParam(AutoParamMetaData::xPosition),
-                        readParam(AutoParamMetaData::yPosition),
-                        readParam(AutoParamMetaData::zPosition), azimuth_,
+  const float x = readParam(AutoParamMetaData::xPosition);
+  const float y = readParam(AutoParamMetaData::yPosition);
+  xyzToAzimuthElevation(x, y, readParam(AutoParamMetaData::zPosition), azimuth_,
                         elevation_);
+  horizontalRadius_ = std::sqrt(x * x + y * y) / 50.0f;
 }
 
-void FridayPannerScope::writePosition(float azimuthDeg, float elevationDeg) {
-  float x = 0.0f, y = 0.0f, z = 0.0f;
-  azimuthElevationToXyz(azimuthDeg, elevationDeg, x, y, z);
-
-  const struct {
-    const juce::String& id;
-    float value;
-  } writes[] = {{AutoParamMetaData::xPosition, x},
-                {AutoParamMetaData::yPosition, y},
-                {AutoParamMetaData::zPosition, z}};
-
-  for (const auto& w : writes) {
-    if (juce::RangedAudioParameter* p = parameters_.getParameter(w.id)) {
-      // setValueNotifyingHost, not a direct tree poke: the host has to see
-      // this as a parameter move so automation writes and undo behave exactly
-      // as they do when the numeric dials are used.
-      p->setValueNotifyingHost(p->convertTo0to1(w.value));
-    }
+void FridayPannerScope::writeParam(const juce::String& id, float value) {
+  if (juce::RangedAudioParameter* p = parameters_.getParameter(id)) {
+    // setValueNotifyingHost, not a direct tree poke: the host has to see this
+    // as a parameter move so automation writes and undo behave exactly as they
+    // do when the numeric dials are used. It is also what makes Eclipsa's
+    // ElevationListener fire and recompute Z for the active surface.
+    p->setValueNotifyingHost(p->convertTo0to1(value));
   }
+}
+
+void FridayPannerScope::writeDrag(float azimuthDeg, float radiusFrac) {
+  const bool manualHeight =
+      elevationMode_ == AudioElementSpatialLayout::Elevation::kFlat ||
+      elevationMode_ == AudioElementSpatialLayout::Elevation::kNone;
+
+  // Manual: the Z dial owns height, so a drag only turns the object. Keeping
+  // its floor distance means the object does not also jump towards or away
+  // from the listener when all the user did was swing it round.
+  // Manual mode keeps the object's distance — but only if it HAS one. A fresh
+  // panner sits at the origin, and preserving a radius of zero there would
+  // make the pad inert: every drag would write (0, 0) and nothing would move.
+  const float keep = juce::jlimit(0.0f, 1.0f, horizontalRadius_);
+  const float r = (manualHeight && keep > 1e-3f)
+                      ? keep
+                      : juce::jlimit(0.0f, 1.0f, radiusFrac);
+
+  const float a = azimuthDeg * kRad;
+  writeParam(AutoParamMetaData::xPosition, -std::sin(a) * r * 50.0f);
+  writeParam(AutoParamMetaData::yPosition, std::cos(a) * r * 50.0f);
+
+  // Z is NOT written here for a constrained surface: ElevationListener is
+  // already listening to X and Y and derives Z from that mode's shape. Writing
+  // it too would mean two authorities for the same number, and on tent, arch
+  // and curve they do not agree.
 }
 
 //======================================================================
@@ -231,6 +249,10 @@ void FridayPannerScope::mouseDown(const juce::MouseEvent& e) {
   if (!interactive_) return;
   dragging_ = true;
   trail_.clear();
+  // Read the parameters before using any of them: a drag that starts from
+  // cached state can be a whole gesture behind, and in manual mode it decides
+  // the distance the object keeps.
+  refreshFromParameters();
   for (const auto& id :
        {AutoParamMetaData::xPosition, AutoParamMetaData::yPosition,
         AutoParamMetaData::zPosition}) {
@@ -243,11 +265,13 @@ void FridayPannerScope::mouseDown(const juce::MouseEvent& e) {
 
 void FridayPannerScope::mouseDrag(const juce::MouseEvent& e) {
   if (!interactive_ || !dragging_) return;
-  float az = 0.0f, el = 0.0f;
-  pointToAzimuthElevation(e.position, az, el);
-  writePosition(az, el);
+  const juce::Point<float> c = centre();
+  const float az =
+      std::atan2(-(e.position.x - c.x), -(e.position.y - c.y)) * kDeg;
+  const float rim = juce::jmax(radius() * kRimFraction, 1e-6f);
+  writeDrag(az, c.getDistanceFrom(e.position) / rim);
   refreshFromParameters();
-  trail_.push_back({azimuth_, elevation_});
+  trail_.push_back({azimuth_, horizontalRadius_});
   if (trail_.size() > kTrailLength) {
     trail_.erase(trail_.begin());
   }
@@ -278,7 +302,11 @@ void FridayPannerScope::mouseDoubleClick(const juce::MouseEvent&) {
       p->beginChangeGesture();
     }
   }
-  writePosition(0.0f, 0.0f);
+  writeDrag(0.0f, 1.0f);
+  if (elevationMode_ == AudioElementSpatialLayout::Elevation::kFlat ||
+      elevationMode_ == AudioElementSpatialLayout::Elevation::kNone) {
+    writeParam(AutoParamMetaData::zPosition, 0.0f);
+  }
   for (const auto& id :
        {AutoParamMetaData::xPosition, AutoParamMetaData::yPosition,
         AutoParamMetaData::zPosition}) {
@@ -398,8 +426,10 @@ void FridayPannerScope::paint(juce::Graphics& g) {
   // Motion trail: amber fading in towards the newest sample.
   if (trail_.size() >= 2) {
     for (size_t i = 0; i + 1 < trail_.size(); ++i) {
-      const juce::Point<float> a = toPoint(trail_[i].x, trail_[i].y);
-      const juce::Point<float> b = toPoint(trail_[i + 1].x, trail_[i + 1].y);
+      const juce::Point<float> a =
+          toPointAtRadius(trail_[i].x, trail_[i].y);
+      const juce::Point<float> b =
+          toPointAtRadius(trail_[i + 1].x, trail_[i + 1].y);
       const float t = static_cast<float>(i) / static_cast<float>(trail_.size() - 1);
       g.setColour(EclipsaColours::amber.withAlpha(0.06f + 0.5f * t));
       g.drawLine(a.x, a.y, b.x, b.y, 2.0f);
@@ -407,7 +437,7 @@ void FridayPannerScope::paint(juce::Graphics& g) {
   }
 
   // The object: layered glow, then a white-hot core.
-  const juce::Point<float> obj = toPoint(azimuth_, elevation_);
+  const juce::Point<float> obj = toPointAtRadius(azimuth_, horizontalRadius_);
   juce::ColourGradient halo(EclipsaColours::amber.withAlpha(0.55f), obj.x, obj.y,
                             EclipsaColours::amber.withAlpha(0.0f), obj.x + 26.0f,
                             obj.y, true);
@@ -422,7 +452,7 @@ void FridayPannerScope::paint(juce::Graphics& g) {
   // it. Without this an elevated object is indistinguishable from one that is
   // simply closer to the centre.
   if (elevation_ > kElevatedDeg) {
-    const juce::Point<float> floor = toPoint(azimuth_, 0.0f);
+    const juce::Point<float> floor = toPointAtRadius(azimuth_, 1.0f);
     juce::Path ring;
     ring.addEllipse(floor.x - 5.0f, floor.y - 5.0f, 10.0f, 10.0f);
     ring.startNewSubPath(floor);

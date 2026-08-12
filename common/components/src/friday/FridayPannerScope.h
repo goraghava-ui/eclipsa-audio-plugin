@@ -23,8 +23,12 @@
 //
 // Conventions, shared with Studio and with the capture tap:
 //   * azimuth is +LEFT (ITU-R BS.2051-3); M+030 is the L speaker.
-//   * elevation is RADIUS: the rim is the horizon, the centre is the zenith
-//     (dome projection). Studio calls this the "dome" constraint surface.
+//   * the radar is a FLOOR PLAN: an object is drawn at its horizontal distance
+//     hypot(x, y). On the dome — a source on the unit sphere — that equals
+//     cos(elevation), so the rim is the horizon and the centre is the zenith,
+//     exactly as in Studio's scope. Off the dome (tent, arch, curve) the floor
+//     radius is the only honest answer, and deriving one from elevation would
+//     draw the object somewhere it is not.
 //
 // Thread discipline: everything here is message-thread only. Positions are READ
 // from the parameters' own atomics (getRawParameterValue) and WRITTEN through
@@ -79,6 +83,24 @@ class FridayPannerScope : public juce::Component, private juce::Timer {
     repaint();
   }
 
+  /// Which surface a drag is moving along. This changes what a drag WRITES:
+  ///
+  ///   kFlat / kNone  — azimuth only. The user owns height on the Z dial, so a
+  ///                    drag rotates the object and leaves its distance and
+  ///                    height alone. Studio calls this "manual".
+  ///   everything else — the drag writes X and Y, and Eclipsa's own
+  ///                    ElevationListener derives Z from them using that
+  ///                    mode's surface (tent / arch / dome / curve).
+  ///
+  /// The pad deliberately does NOT reimplement those surfaces. Eclipsa already
+  /// owns them in ElevationListener/Coordinates, they are what the monitoring
+  /// render obeys, and a second copy in the UI would be free to drift from the
+  /// one that actually decides where the object is.
+  void setElevationMode(AudioElementSpatialLayout::Elevation mode) {
+    elevationMode_ = mode;
+    repaint();
+  }
+
   //== the projection, exposed so the tests can hold it to the reference =======
 
   /// Studio's `_radius_frac`: normalised radius an elevation sits at. The 0.12
@@ -115,9 +137,11 @@ class FridayPannerScope : public juce::Component, private juce::Timer {
   juce::Point<float> centre() const;
   float radius() const;
   juce::Point<float> toPoint(float azimuthDeg, float elevationDeg) const;
-  void pointToAzimuthElevation(juce::Point<float> p, float& azimuthDeg,
-                               float& elevationDeg) const;
-  void writePosition(float azimuthDeg, float elevationDeg);
+  /// Where a given azimuth and NORMALISED FLOOR RADIUS lands on screen.
+  juce::Point<float> toPointAtRadius(float azimuthDeg, float radiusFrac) const;
+  /// Write X and Y for a drag; Z is written only where the user owns it.
+  void writeDrag(float azimuthDeg, float radiusFrac);
+  void writeParam(const juce::String& id, float value);
   float readParam(const juce::String& id) const;
   void refreshFromParameters();
 
@@ -127,12 +151,21 @@ class FridayPannerScope : public juce::Component, private juce::Timer {
   std::vector<Speaker> speakers_;
   float azimuth_ = 0.0f;
   float elevation_ = 0.0f;
+  /// hypot(x, y) / 50 — where the object sits on the FLOOR PLAN, which is what
+  /// a top-down radar actually shows. For a source on the unit sphere this is
+  /// cos(elevation) and the scope is identical to Studio's; off the sphere —
+  /// which tent, arch and curve all produce — it is the only correct radius,
+  /// and deriving one from elevation instead would draw the object somewhere
+  /// it is not.
+  float horizontalRadius_ = 1.0f;
+  AudioElementSpatialLayout::Elevation elevationMode_ =
+      AudioElementSpatialLayout::Elevation::kNone;
   bool interactive_ = true;
   bool contours_ = false;
   bool dragging_ = false;
 
   /// Recent positions, newest last — the amber motion trail.
-  std::vector<juce::Point<float>> trail_;  // (azimuth, elevation) pairs
+  std::vector<juce::Point<float>> trail_;  // (azimuth, floor radius) pairs
   int trailHold_ = 0;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FridayPannerScope)

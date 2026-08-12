@@ -45,9 +45,14 @@ RoomViewScreen::RoomViewScreen(
   }
   room_->setInteractive(
       audioElementSpatialLayoutRepository_->get().isPanningEnabled());
+  // Contours only on the dome. They are rings of constant elevation under the
+  // DOME projection; on tent, arch or curve they would draw a guide the
+  // surface does not follow.
   room_->setElevationContours(
-      audioElementSpatialLayoutRepository_->get().getElevation() !=
-      AudioElementSpatialLayout::Elevation::kFlat);
+      audioElementSpatialLayoutRepository_->get().getElevation() ==
+      AudioElementSpatialLayout::Elevation::kDome);
+  room_->setElevationMode(
+      audioElementSpatialLayoutRepository_->get().getElevation());
   addAndMakeVisible(room_.get());
 
   // Configure the roof selection, but only make visible if panning is enabled
@@ -113,8 +118,9 @@ void RoomViewScreen::elevationChangeCallback() {
 
   // The radar shows a constrained surface as contours; "flat" means the user
   // owns height independently, so there is no surface to draw.
-  room_->setElevationContours(newElevation !=
-                              AudioElementSpatialLayout::Elevation::kFlat);
+  room_->setElevationContours(newElevation ==
+                              AudioElementSpatialLayout::Elevation::kDome);
+  room_->setElevationMode(newElevation);
 }
 
 // On the same timer for rendering the tracks, add height data if the selected

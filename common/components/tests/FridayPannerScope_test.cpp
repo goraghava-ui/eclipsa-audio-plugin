@@ -311,6 +311,174 @@ TEST_F(ScopeFixture, a_non_interactive_pad_ignores_drags) {
 }
 
 //======================================================================
+// Elevation modes
+//
+// The pad does not reimplement Eclipsa's surfaces — it writes X/Y and lets
+// ElevationListener derive Z. These wire up a real listener, so what is being
+// tested is that combination, which is what the user actually operates.
+//======================================================================
+
+class ScopeModeFixture : public ScopeFixture {
+ protected:
+  void useMode(AudioElementSpatialLayout::Elevation mode) {
+    AudioElementSpatialLayout l = layout_->get();
+    l.setElevation(mode);
+    layout_->update(l);
+    scope_->setElevationMode(mode);
+  }
+
+  void dragTo(juce::Point<float> at) {
+    const juce::MouseEvent e(juce::Desktop::getInstance().getMainMouseSource(),
+                             at, juce::ModifierKeys::leftButtonModifier, 1.0f,
+                             0.0f, 0.0f, 0.0f, 0.0f, scope_.get(), scope_.get(),
+                             juce::Time::getCurrentTime(), at,
+                             juce::Time::getCurrentTime(), 1, false);
+    scope_->mouseDown(e);
+    scope_->mouseDrag(e);
+    scope_->mouseUp(e);
+  }
+
+  float azimuth() const {
+    float az = 0.0f, el = 0.0f;
+    FridayPannerScope::xyzToAzimuthElevation(
+        xyz(AutoParamMetaData::xPosition), xyz(AutoParamMetaData::yPosition),
+        xyz(AutoParamMetaData::zPosition), az, el);
+    return az;
+  }
+  float floorRadius() const {
+    const float x = xyz(AutoParamMetaData::xPosition);
+    const float y = xyz(AutoParamMetaData::yPosition);
+    return std::sqrt(x * x + y * y) / 50.0f;
+  }
+
+  /// The height Eclipsa's surface assigns to the X/Y the pad just wrote.
+  ///
+  /// Deliberately calls the surface directly rather than going through a live
+  /// ElevationListener: that listener is an APVTS listener, APVTS dispatches
+  /// those on the MESSAGE THREAD, and a plugin build has
+  /// JUCE_MODAL_LOOPS_PERMITTED off so a test cannot pump one. Asserting the
+  /// composition this way tests the same two contracts — the pad writes X/Y,
+  /// the surface derives Z — without depending on a loop that is not there.
+  float surfaceHeight(AudioElementSpatialLayout::Elevation mode) const {
+    const float x = xyz(AutoParamMetaData::xPosition) / 50.0f;
+    const float y = xyz(AutoParamMetaData::yPosition) / 50.0f;
+    switch (mode) {
+      case AudioElementSpatialLayout::Elevation::kTent:
+        return ElevationListener::getTentElevationPt({x, y, 0.f}).a[1] * 50.0f;
+      case AudioElementSpatialLayout::Elevation::kArch:
+        return ElevationListener::getArchElevationPt({x, y, 0.f}).a[1] * 50.0f;
+      case AudioElementSpatialLayout::Elevation::kDome:
+        return ElevationListener::getDomeElevationPtClamped({x, y, 0.f}, {})
+                   .a[1] *
+               50.0f;
+      case AudioElementSpatialLayout::Elevation::kCurve:
+        // The listener negates Y for the curve; mirror it exactly.
+        return ElevationListener::getCurveElevationPt({x, -y, 0.f}).a[1] * 50.0f;
+      default:
+        return xyz(AutoParamMetaData::zPosition);
+    }
+  }
+};
+
+TEST_F(ScopeModeFixture, flat_mode_drags_azimuth_only) {
+  useMode(AudioElementSpatialLayout::Elevation::kFlat);
+  setXyz(0.0f, 50.0f, 20.0f);  // dead ahead, on the rim, lifted by the dial
+  const float heightBefore = xyz(AutoParamMetaData::zPosition);
+  const float radiusBefore = floorRadius();
+
+  // Drag towards the centre AND to the left. Only the turn should take.
+  dragTo({160.0f, 200.0f});
+
+  EXPECT_GT(azimuth(), 10.0f) << "the object should have turned left";
+  EXPECT_NEAR(floorRadius(), radiusBefore, 0.02f)
+      << "flat mode must not pull the object in or out";
+  EXPECT_NEAR(xyz(AutoParamMetaData::zPosition), heightBefore, 0.5f)
+      << "flat mode leaves height to the Z dial";
+}
+
+TEST_F(ScopeModeFixture, flat_mode_can_still_move_an_object_at_the_origin) {
+  // A fresh panner sits at (0,0,0). Preserving a radius of zero would make the
+  // pad inert there — every drag writing (0,0) and nothing moving.
+  useMode(AudioElementSpatialLayout::Elevation::kFlat);
+  setXyz(0.0f, 0.0f, 0.0f);
+  dragTo({160.0f, 200.0f});
+  EXPECT_GT(floorRadius(), 0.1f) << "the object must leave the origin";
+  EXPECT_GT(azimuth(), 10.0f);
+}
+
+// Eclipsa's dome is NOT Studio's dome, and this is where that shows.
+//
+// Studio's dome constraint is the unit sphere: el = acos(r), so the rim is the
+// horizon and the centre is the zenith. Eclipsa's is
+// height = 2*sqrt(1 - x^2 - y^2) - 1, a dome over a room whose FLOOR is at -1:
+// the rim is floor level, not ear level. At half radius Studio says 60 deg and
+// Eclipsa says 55.7.
+//
+// The pad defers to Eclipsa's, deliberately: that surface is what
+// ElevationListener writes into Z and therefore what the monitoring render and
+// the exported file obey. Matching Studio exactly would mean changing Eclipsa's
+// dome equation, which moves audio, not pixels. Recorded in
+// BRIDGE-B2-PLAN.md §B5 rather than changed here.
+TEST_F(ScopeModeFixture, dome_mode_rides_eclipsas_dome) {
+  useMode(AudioElementSpatialLayout::Elevation::kDome);
+  dragTo({280.0f, 280.0f - 235.0f * 0.5f});  // halfway in, dead ahead
+
+  const float x = xyz(AutoParamMetaData::xPosition) / 50.0f;
+  const float y = xyz(AutoParamMetaData::yPosition) / 50.0f;
+  const float z =
+      surfaceHeight(AudioElementSpatialLayout::Elevation::kDome) / 50.0f;
+  const float r2 = x * x + y * y;
+  EXPECT_NEAR(z, 2.0f * std::sqrt(1.0f - r2) - 1.0f, 0.02f);
+  EXPECT_GT(z, 0.0f) << "inside the rim means elevated";
+  // And it IS a dome: the centre is the top of it.
+  EXPECT_NEAR(ElevationListener::getDomeElevationPtClamped({0.f, 0.f, 0.f}, {})
+                  .a[1],
+              1.0f, 1e-4f);
+  EXPECT_NEAR(ElevationListener::getDomeElevationPtClamped({0.f, 1.f, 0.f}, {})
+                  .a[1],
+              -1.0f, 1e-4f);
+}
+
+TEST_F(ScopeModeFixture, a_constrained_mode_lifts_the_object_off_the_floor) {
+  // Whatever the surface's shape, moving IN from the rim must gain height —
+  // that is what makes the radar readable as a room rather than a flat map.
+  for (const auto mode : {AudioElementSpatialLayout::Elevation::kTent,
+                          AudioElementSpatialLayout::Elevation::kArch,
+                          AudioElementSpatialLayout::Elevation::kDome,
+                          AudioElementSpatialLayout::Elevation::kCurve}) {
+    useMode(mode);
+    dragTo({280.0f, 280.0f - 235.0f});  // at the rim
+    const float atRim = surfaceHeight(mode);
+    dragTo({280.0f, 280.0f - 235.0f * 0.25f});  // well inside it
+    const float inside = surfaceHeight(mode);
+    EXPECT_GT(inside, atRim) << "mode " << static_cast<int>(mode);
+  }
+}
+
+TEST_F(ScopeModeFixture, azimuth_survives_every_mode) {
+  // The surface owns height; it must never take the direction with it.
+  for (const auto mode : {AudioElementSpatialLayout::Elevation::kFlat,
+                          AudioElementSpatialLayout::Elevation::kTent,
+                          AudioElementSpatialLayout::Elevation::kArch,
+                          AudioElementSpatialLayout::Elevation::kDome,
+                          AudioElementSpatialLayout::Elevation::kCurve}) {
+    useMode(mode);
+    setXyz(0.0f, 50.0f, 0.0f);
+    const float a = 60.0f * 3.14159265f / 180.0f;  // 60 deg LEFT, at the rim
+    dragTo({280.0f - std::sin(a) * 235.0f, 280.0f - std::cos(a) * 235.0f});
+    EXPECT_NEAR(azimuth(), 60.0f, 1.0f) << "mode " << static_cast<int>(mode);
+  }
+}
+
+TEST_F(ScopeModeFixture, the_floor_radius_follows_the_drag_when_constrained) {
+  useMode(AudioElementSpatialLayout::Elevation::kTent);
+  dragTo({280.0f, 280.0f - 235.0f * 0.6f});
+  EXPECT_NEAR(floorRadius(), 0.6f, 0.05f)
+      << "a constrained drag places the object where the cursor is on the "
+         "floor plan; only its height is the surface's business";
+}
+
+//======================================================================
 // The parity screenshots
 //======================================================================
 
@@ -321,15 +489,33 @@ TEST_F(ScopeFixture, renders_the_parity_poses) {
   }
   scope_->setElevationContours(true);  // dome, matching Studio's constraint
 
+  // The two parity poses, plus one on a NON-DOME surface (§B6-2): tent puts the
+  // object off the unit sphere, where the scope has to draw it at its floor
+  // radius rather than at cos(elevation).
   const struct {
     const char* name;
     float az;
     float el;
-  } poses[] = {{"az+30_el0", 30.0f, 0.0f}, {"az0_el60", 0.0f, 60.0f}};
+    bool tent;
+  } poses[] = {{"az+30_el0", 30.0f, 0.0f, false},
+               {"az0_el60", 0.0f, 60.0f, false},
+               {"tent_az+30", 30.0f, 0.0f, true}};
 
   for (const auto& pose : poses) {
     float x = 0.0f, y = 0.0f, z = 0.0f;
     FridayPannerScope::azimuthElevationToXyz(pose.az, pose.el, x, y, z);
+    if (pose.tent) {
+      // Halfway in from the rim on the tent surface: height comes from the
+      // depth axis, so the object is NOT on the sphere.
+      x = -std::sin(pose.az * 3.14159265f / 180.0f) * 0.5f * 50.0f;
+      y = std::cos(pose.az * 3.14159265f / 180.0f) * 0.5f * 50.0f;
+      z = ElevationListener::getTentElevationPt({x / 50.0f, y / 50.0f, 0.f}).a[1] *
+          50.0f;
+      scope_->setElevationMode(AudioElementSpatialLayout::Elevation::kTent);
+      scope_->setElevationContours(false);  // not a dome; see RoomViewScreen
+    } else {
+      scope_->setElevationMode(AudioElementSpatialLayout::Elevation::kDome);
+    }
     setXyz(x, y, z);
 
     juce::Image shot(juce::Image::ARGB, 560, 560, true);

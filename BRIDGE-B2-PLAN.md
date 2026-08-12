@@ -890,3 +890,45 @@ captures `az=30.000000` (asked: ±0.01°), and the end-to-end null against the
 **original** Studio reference is **−inf dBFS on all 12 channels, sample-exact** —
 no reference regeneration. Evidence in `docs/evidence/b6/`.
 
+### §B6-2. The pad honours the selected elevation mode (was: B5 follow-up)
+
+The pad's drag was dome-only. It now respects the mode — but **not** by
+implementing per-mode `radiusFraction`/`elevationFromRadius` pairs as the
+follow-up originally imagined, because Eclipsa already owns those surfaces:
+`ElevationListener::get{Tent,Arch,Dome,Curve}ElevationPt` compute height from
+the horizontal position, they are wired to the X and Y parameters, and they are
+what the monitoring render and the exported file obey. A second copy in the UI
+would have been free to drift from the one that actually decides where the
+object is.
+
+So the split is:
+
+| mode | what a drag writes | who owns height |
+|---|---|---|
+| flat / none | azimuth only, distance and height preserved | the Z dial (Studio's "manual") |
+| tent, arch, dome, curve | X and Y | `ElevationListener`, from that mode's surface |
+
+Two consequences worth stating:
+
+- **The radar is a floor plan.** The object is drawn at `hypot(x, y)`, not at
+  `cos(elevation)`. On a sphere those are the same and the scope is identical to
+  Studio's; tent, arch and curve put the object *off* the sphere, where the
+  floor radius is the only honest answer.
+- **Eclipsa's "dome" is not Studio's dome.** Studio's is the unit sphere
+  (`el = acos(r)`); Eclipsa's is `height = 2·√(1−x²−y²) − 1`, a dome over a room
+  whose floor is at −1. At half radius Studio says 60° and Eclipsa says 55.7°.
+  The pad defers to Eclipsa's, because that is the surface that moves audio.
+  Making them identical means changing Eclipsa's dome equation, which changes
+  the render and the deliverable — **not done, flagged.**
+
+Two real defects surfaced while testing this, both of which would have shipped:
+
+1. **The drag read cached state.** `mouseDown` used the last polled position, so
+   a gesture could act on data a frame old — and in manual mode that data
+   decides the distance the object keeps. It now refreshes first. Same class of
+   bug as the stale-paint one in §B5.
+2. **An object at the origin could not be moved in manual mode.** Preserving its
+   distance meant preserving zero: every drag wrote (0, 0) and a fresh panner's
+   pad was inert. It now adopts the cursor's radius when there is no distance to
+   keep.
+
