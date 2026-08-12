@@ -77,7 +77,12 @@ void FileOutputProcessor::prepareToPlay(const double sampleRate,
   // Bring the object bus up now, not when an export arms. ZeroMQ's PUB/SUB
   // handshake costs ~100 ms and an offline bounce of a short project finishes
   // inside that, so binding at arm time loses the head of the capture.
-  if (kalaExportEnabled_) friday::sharedObjectReceiver().start();
+  if (kalaExportEnabled_) {
+    friday::sharedObjectReceiver().start();
+    // V2-02: the live Studio link. It idles silently when Studio is not
+    // running, so starting it here costs one sleeping thread and nothing else.
+    friday::sharedStudioLink().start();
+  }
 #endif
 }
 

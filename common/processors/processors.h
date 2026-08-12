@@ -38,6 +38,7 @@ END_JUCE_MODULE_DECLARATION
 #if FRIDAY_KALA_EXPORT
 #include "friday/FridayObjectCaptureProcessor.h"
 #include "friday/FridayObjectTransport.h"
+#include "friday/FridayStudioLink.h"
 #endif
 #include "file_output/FileOutputProcessor.h"
 #include "file_output/FileOutputProcessor_PremierePro.h"

@@ -28,6 +28,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 
@@ -50,10 +51,12 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     return "FRIDAY Object Capture";
   }
 
-  /// Capture is bounded by the host's offline bounce. Without this the tail of
-  /// the stream keeps growing once the host returns to realtime and the
+  /// EXPORT capture is bounded by the host's offline bounce. Without this the
+  /// tail of the stream keeps growing once the host returns to realtime and the
   /// exporter is still draining, so the encoded file ends up longer than the
   /// render — the object stream has to cover exactly the bounce and no more.
+  /// Realtime blocks still publish, but as position-only pings that carry no
+  /// kFlagOffline and so can never reach the deliverable.
   void setNonRealtime(bool isNonRealtime) noexcept override {
     offline_.store(isNonRealtime, std::memory_order_release);
   }
@@ -61,7 +64,6 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
   void processBlock(juce::AudioBuffer<float>& buffer,
                     juce::MidiBuffer&) override {
     // AUDIO THREAD — publish() only memcpys into a preallocated ring.
-    if (!offline_.load(std::memory_order_acquire)) return;
     if (buffer.getNumChannels() < 1 || buffer.getNumSamples() < 1) return;
     if (spatialLayoutRepository_ == nullptr ||
         automationParameterTree_ == nullptr) {
@@ -74,6 +76,10 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     }
     if (!automationParameterTree_->getUnmute()) return;
 
+    // Snapshot the name into a plain buffer: the wire header is POD and the
+    // audio thread must not touch juce::String's ref-counted storage.
+    updateNameCache(layout.getName());
+
     const float x = static_cast<float>(automationParameterTree_->getXPosition());
     const float y = static_cast<float>(automationParameterTree_->getYPosition());
     const float z = static_cast<float>(automationParameterTree_->getZPosition());
@@ -85,13 +91,38 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
     uint8_t uuid[16];
     std::memcpy(uuid, id.getRawData(), 16);
 
-    publisher_.publish(uuid, az, el, /*spread=*/0.0f,
-                       automationParameterTree_->getVolume(),
-                       buffer.getReadPointer(0),
-                       static_cast<uint32_t>(buffer.getNumSamples()));
+    const float gain = automationParameterTree_->getVolume();
+
+    if (offline_.load(std::memory_order_acquire)) {
+      publisher_.publish(uuid, az, el, /*spread=*/0.0f, gain,
+                         buffer.getReadPointer(0),
+                         static_cast<uint32_t>(buffer.getNumSamples()),
+                         friday::kFlagOffline, name_);
+      return;
+    }
+
+    // Realtime: a position-only ping for the live Studio link (V2-02). No PCM,
+    // so this costs a fixed ~72 bytes into the ring and nothing else; the
+    // export never sees these blocks (they carry no kFlagOffline).
+    if (++liveTick_ < liveInterval_) return;
+    liveTick_ = 0;
+    publisher_.publish(uuid, az, el, /*spread=*/0.0f, gain, nullptr, 0,
+                       /*flags=*/0, name_);
   }
 
-  void prepareToPlay(double, int) override {}
+  void prepareToPlay(double sampleRate, int samplesPerBlock) override {
+    // Ping at ~kLiveHz so the link always has a fresh position to send at its
+    // own 30 Hz throttle, without putting a block-rate stream on the bus.
+    constexpr double kLiveHz = 60.0;
+    if (sampleRate > 0.0 && samplesPerBlock > 0) {
+      const double blocksPerSecond = sampleRate / samplesPerBlock;
+      liveInterval_ =
+          std::max(1, static_cast<int>(std::lround(blocksPerSecond / kLiveHz)));
+    } else {
+      liveInterval_ = 1;
+    }
+    liveTick_ = liveInterval_;  // publish on the very first block
+  }
 
   uint64_t droppedBlocks() const noexcept { return publisher_.dropped(); }
 
@@ -128,8 +159,21 @@ class FridayObjectCaptureProcessor final : public ProcessorBase {
   }
 
  private:
+  /// Copies at most 31 bytes out of the layout name into a POD buffer. The
+  /// juce::String itself is never handed further down — the wire header is
+  /// memcpy-able and crosses a thread boundary.
+  void updateNameCache(const juce::String& name) noexcept {
+    const char* utf8 = name.toRawUTF8();
+    size_t i = 0;
+    for (; i + 1 < sizeof(name_) && utf8[i] != '\0'; ++i) name_[i] = utf8[i];
+    for (; i < sizeof(name_); ++i) name_[i] = '\0';
+  }
+
   AudioElementSpatialLayoutRepository* spatialLayoutRepository_;
   AudioElementParameterTree* automationParameterTree_;
   std::atomic<bool> offline_{false};
+  char name_[32] = {};
+  int liveTick_ = 0;
+  int liveInterval_ = 1;
   friday::ObjectPublisher publisher_;
 };

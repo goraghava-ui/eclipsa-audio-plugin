@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <mutex>
 
 #include "zmq.hpp"
@@ -28,6 +29,9 @@ namespace {
 constexpr size_t kRingBytes = 8u << 20;   // 8 MiB — ~45 s of 48k mono
 constexpr size_t kMaxBlockFrames = 65536; // sanity bound on a wire block
 const char* kEndpoint = "tcp://localhost:5556";
+/// PR-1 is 48 kHz only (KalaIamfWriter::open rejects anything else), so
+/// keyframe times can be derived from the captured sample count.
+constexpr double kCaptureSampleRate = 48000.0;
 }  // namespace
 
 //======================================================================
@@ -59,10 +63,12 @@ ObjectPublisher::~ObjectPublisher() {
 
 bool ObjectPublisher::publish(const uint8_t uuid[16], float az_deg,
                               float el_deg, float spread, float gain_db,
-                              const float* mono, uint32_t frames) noexcept {
+                              const float* mono, uint32_t frames,
+                              uint32_t flags, const char* name) noexcept {
   // AUDIO THREAD. No allocation, no lock, no syscall — just two memcpys into
   // the preallocated ring.
-  if (mono == nullptr || frames == 0 || frames > kMaxBlockFrames) return false;
+  if (frames > kMaxBlockFrames) return false;
+  if (frames > 0 && mono == nullptr) return false;
 
   ObjectBlockHeader h{};
   std::memcpy(h.magic, "FROB", 4);
@@ -74,6 +80,14 @@ bool ObjectPublisher::publish(const uint8_t uuid[16], float az_deg,
   h.gain_db = gain_db;
   h.frames = frames;
   h.seq = seq_.fetch_add(1, std::memory_order_relaxed);
+  h.flags = flags;
+  if (name != nullptr) {
+    // strncpy without the library call's warning noise; h is already zeroed so
+    // the result is always NUL-terminated.
+    for (size_t i = 0; i + 1 < sizeof(h.name) && name[i] != '\0'; ++i) {
+      h.name[i] = name[i];
+    }
+  }
 
   const size_t payload = static_cast<size_t>(frames) * sizeof(float);
   if (ring_.available() + sizeof(h) + payload > kRingBytes) {
@@ -84,7 +98,7 @@ bool ObjectPublisher::publish(const uint8_t uuid[16], float az_deg,
     dropped_.fetch_add(1, std::memory_order_relaxed);
     return false;
   }
-  if (!ring_.push(mono, payload)) {
+  if (payload > 0 && !ring_.push(mono, payload)) {
     // Header already committed; the reader will see a short block and resync
     // on the next magic. Counted so it is visible rather than silent.
     dropped_.fetch_add(1, std::memory_order_relaxed);
@@ -141,12 +155,19 @@ struct ObjectReceiver::Impl {
   // insertion-ordered so the render is deterministic
   std::vector<Object> objects;
   std::unordered_map<std::string, size_t> index;
+  // Live positions, independent of any export and not cleared by reset().
+  std::vector<LiveObject> live;
+  std::unordered_map<std::string, size_t> liveIndex;
   uint32_t lastSeq = 0;
   bool haveSeq = false;
 };
 
 ObjectReceiver::ObjectReceiver()
-    : running_(false), gaps_(0), blocks_(0), impl_(std::make_unique<Impl>()) {}
+    : running_(false),
+      gaps_(0),
+      blocks_(0),
+      liveRevision_(0),
+      impl_(std::make_unique<Impl>()) {}
 
 ObjectReceiver::~ObjectReceiver() { stop(); }
 
@@ -237,6 +258,35 @@ void ObjectReceiver::workerLoop() {
     impl_->haveSeq = true;
 
     const std::string key(reinterpret_cast<const char*>(h.uuid), 16);
+    const std::string name(h.name,
+                           strnlen(h.name, sizeof(h.name)));
+
+    // -- live position, from every block regardless of flags ---------------
+    {
+      auto lit = impl_->liveIndex.find(key);
+      if (lit == impl_->liveIndex.end()) {
+        LiveObject lo;
+        std::memcpy(lo.uuid.data(), h.uuid, 16);
+        impl_->liveIndex[key] = impl_->live.size();
+        impl_->live.push_back(std::move(lo));
+        lit = impl_->liveIndex.find(key);
+      }
+      LiveObject& live = impl_->live[lit->second];
+      const bool changed =
+          live.az_deg != h.az_deg || live.el_deg != h.el_deg ||
+          live.spread != h.spread || live.gain_db != h.gain_db ||
+          live.name != name;
+      live.az_deg = h.az_deg;
+      live.el_deg = h.el_deg;
+      live.spread = h.spread;
+      live.gain_db = h.gain_db;
+      if (!name.empty()) live.name = name;
+      if (changed) liveRevision_.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    // -- export accumulation, OFFLINE blocks only --------------------------
+    if ((h.flags & kFlagOffline) == 0 || h.frames == 0) continue;
+
     auto it = impl_->index.find(key);
     if (it == impl_->index.end()) {
       Object o;
@@ -246,16 +296,41 @@ void ObjectReceiver::workerLoop() {
       it = impl_->index.find(key);
     }
     Object& obj = impl_->objects[it->second];
+    if (!name.empty()) obj.name = name;
     obj.az_deg = h.az_deg;
     obj.el_deg = h.el_deg;
     obj.spread = h.spread;
     obj.gain_db = h.gain_db;
+
+    // Automation, not one frozen point: a keyframe whenever the position
+    // actually moves, timed from what has been captured so far. This is what
+    // makes a .fstudio handoff carry the move the user performed (V2-02).
+    const double t = static_cast<double>(obj.pcm.size()) / kCaptureSampleRate;
+    if (obj.keyframes.empty()) {
+      obj.keyframes.push_back({0.0, h.az_deg, h.el_deg, h.spread, h.gain_db});
+    } else {
+      const Keyframe& last = obj.keyframes.back();
+      constexpr float kMoveEpsilonDeg = 0.05f;
+      constexpr float kMoveEpsilon = 1e-4f;
+      if (std::fabs(last.az_deg - h.az_deg) > kMoveEpsilonDeg ||
+          std::fabs(last.el_deg - h.el_deg) > kMoveEpsilonDeg ||
+          std::fabs(last.spread - h.spread) > kMoveEpsilon ||
+          std::fabs(last.gain_db - h.gain_db) > kMoveEpsilon) {
+        obj.keyframes.push_back({t, h.az_deg, h.el_deg, h.spread, h.gain_db});
+      }
+    }
+
     const auto* samples =
         reinterpret_cast<const float*>(static_cast<const uint8_t*>(msg.data()) +
                                        sizeof(h));
     obj.pcm.insert(obj.pcm.end(), samples, samples + h.frames);
     blocks_.fetch_add(1, std::memory_order_relaxed);
   }
+}
+
+std::vector<ObjectReceiver::LiveObject> ObjectReceiver::liveSnapshot() {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  return impl_->live;
 }
 
 std::vector<ObjectReceiver::Object> ObjectReceiver::take() {

@@ -27,6 +27,7 @@
 #if FRIDAY_KALA_EXPORT
 #include "file_output/iamf_export_utils/KalaIamfWriter.cpp"
 #include "friday/FridayObjectTransport.cpp"
+#include "friday/FridayStudioLink.cpp"
 #endif
 #include "file_playback/FilePlaybackProcessor.cpp"
 #include "file_playback/IAMFBufferedReader.cpp"

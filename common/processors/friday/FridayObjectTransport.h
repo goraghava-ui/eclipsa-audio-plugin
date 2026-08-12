@@ -46,17 +46,26 @@ namespace friday {
 /// Fixed wire header preceding each object block. POD, memcpy-able.
 struct ObjectBlockHeader {
   char magic[4];        // "FROB"
-  uint32_t version;     // 1
+  uint32_t version;     // 2
   uint8_t uuid[16];     // audio element id the object belongs to
   float az_deg;         // +left; M+030 is the L speaker (Studio's convention)
   float el_deg;
   float spread;         // 0..1
   float gain_db;
-  uint32_t frames;      // mono samples following this header
+  uint32_t frames;      // mono samples following; 0 = position only (no PCM)
   uint32_t seq;         // per-publisher sequence, for gap detection
+  uint32_t flags;       // kFlagOffline
+  char name[32];        // NUL-padded object name, for the live scope
 };
 
-static constexpr uint32_t kObjectWireVersion = 1;
+/// Set when the block belongs to the host's offline bounce. Only these carry
+/// PCM and only these are accumulated for an export — realtime blocks are
+/// position pings for the live Studio link (V2-02) and must never reach the
+/// deliverable, or the last thing the user touched after a bounce would
+/// silently become the exported pan.
+static constexpr uint32_t kFlagOffline = 1u << 0;
+
+static constexpr uint32_t kObjectWireVersion = 2;
 /// Object transport lives on its own port; 5555 stays Eclipsa's metadata bus.
 static constexpr int kObjectPort = 5556;
 
@@ -118,10 +127,12 @@ class ObjectPublisher {
   ObjectPublisher();
   ~ObjectPublisher();
 
-  /// Audio-thread safe. `mono` is the object's pre-pan signal.
+  /// Audio-thread safe. `mono` is the object's pre-pan signal; pass nullptr
+  /// with `frames == 0` for a position-only ping. `name` may be nullptr.
   /// Returns false if the ring was full (block dropped, counted).
   bool publish(const uint8_t uuid[16], float az_deg, float el_deg, float spread,
-               float gain_db, const float* mono, uint32_t frames) noexcept;
+               float gain_db, const float* mono, uint32_t frames,
+               uint32_t flags, const char* name) noexcept;
 
   uint64_t dropped() const noexcept {
     return dropped_.load(std::memory_order_relaxed);
@@ -145,13 +156,38 @@ class ObjectPublisher {
 //======================================================================
 class ObjectReceiver {
  public:
+  /// One automation point in an object's captured timeline.
+  struct Keyframe {
+    double t = 0.0;  // seconds from the start of the capture
+    float az_deg = 0.0f;
+    float el_deg = 0.0f;
+    float spread = 0.0f;
+    float gain_db = 0.0f;
+  };
+
   struct Object {
     std::array<uint8_t, 16> uuid{};
+    std::string name;
     float az_deg = 0.0f;
     float el_deg = 0.0f;
     float spread = 0.0f;
     float gain_db = 0.0f;
     std::vector<float> pcm;
+    /// Positions over the capture, so a handoff carries real automation
+    /// instead of one frozen point. Always at least one entry at t = 0.
+    std::vector<Keyframe> keyframes;
+  };
+
+  /// What the live Studio link paints: current position per object, with no
+  /// audio attached. Kept separately from `Object` so realtime pings can never
+  /// be mistaken for export material.
+  struct LiveObject {
+    std::array<uint8_t, 16> uuid{};
+    std::string name;
+    float az_deg = 0.0f;
+    float el_deg = 0.0f;
+    float spread = 0.0f;
+    float gain_db = 0.0f;
   };
 
   ObjectReceiver();
@@ -172,6 +208,14 @@ class ObjectReceiver {
   /// Snapshot of everything captured since the last reset().
   std::vector<Object> take();
   size_t objectCount();
+
+  /// Current position of every object seen since start(), realtime or not.
+  /// Survives reset() — the live scope should not blink when an export arms.
+  std::vector<LiveObject> liveSnapshot();
+  /// Bumped whenever a live position changes; lets a poller skip work.
+  uint64_t liveRevision() const noexcept {
+    return liveRevision_.load(std::memory_order_relaxed);
+  }
   uint32_t gaps() const noexcept { return gaps_.load(std::memory_order_relaxed); }
   uint64_t blocksReceived() const noexcept {
     return blocks_.load(std::memory_order_relaxed);
@@ -182,7 +226,9 @@ class ObjectReceiver {
 
   std::atomic<bool> running_;
   std::atomic<uint32_t> gaps_;
-  std::atomic<uint64_t> blocks_;
+  std::atomic<uint64_t> blocks_;       // OFFLINE blocks only — drain() waits on
+                                       // this, and realtime pings never stop.
+  std::atomic<uint64_t> liveRevision_;
   std::thread worker_;
   struct Impl;
   std::unique_ptr<Impl> impl_;

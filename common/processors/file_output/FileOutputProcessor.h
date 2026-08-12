@@ -36,6 +36,7 @@
 #include "data_repository/implementation/MixPresentationLoudnessRepository.h"
 #include "iamf_export_utils/IAMFFileWriter.h"
 #if FRIDAY_KALA_EXPORT
+#include "../friday/FridayStudioLink.h"
 #include "iamf_export_utils/KalaIamfWriter.h"
 #endif
 
