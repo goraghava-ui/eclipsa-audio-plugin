@@ -932,3 +932,22 @@ Two real defects surfaced while testing this, both of which would have shipped:
    pad was inert. It now adopts the cursor's radius when there is no distance to
    keep.
 
+### §B6-3. Room views draw the layout that gets rendered (was: B5 finding)
+
+`SpeakerLookup`'s vectors were hand-written box-room drawing geometry and were
+wrong twice over against what the FRIDAY path renders:
+
+| | was | now |
+|---|---|---|
+| height layer elevation | **26.6°** (Y=0.5 against a horizontal magnitude of 1.0 — never normalised) | **45°** |
+| rear surrounds | **±135°** | **±150°** |
+
+Every directional speaker is now built by `SpeakerLookup::fromPolar(azimuth,
+elevation, …)` from its BS.2051 angles, so the numbers in that file are the
+angles a reader can check against the standard instead of vectors that have to
+be reverse-engineered. 25 speakers converted; binaural and LFE keep their
+hand-placed positions, having no meaningful polar angle.
+
+This is **drawing only**. `SpeakerLookup` lives in `components/room_views/` and
+is read by `PerspectiveRoomView` to place dots; no renderer, panner or export
+path reads it. Eclipsa's monitoring DSP is untouched.

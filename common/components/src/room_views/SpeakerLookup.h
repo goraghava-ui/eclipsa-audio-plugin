@@ -15,6 +15,10 @@
  */
 
 #pragma once
+#include <cmath>
+#include <string>
+#include <vector>
+
 #include "Coordinates.h"
 #include "substream_rdr/substream_rdr_utils/Speakers.h"
 
@@ -66,6 +70,34 @@ struct RoomViewSpeaker {
   SpeakerTag tag;
 };
 
+/// A speaker from its ITU-R BS.2051 polar angles, on the unit sphere.
+///
+/// The room-view axes are X = right, Y = up, Z = back; azimuth is +LEFT and
+/// elevation is measured off the horizontal, which is the convention the whole
+/// FRIDAY path uses (KALA's render layout, Studio's scope, the panner pad).
+///
+/// This exists because the hand-written vectors it replaced were a box-room
+/// DRAWING geometry rather than a speaker layout, and were wrong twice over
+/// against what actually gets rendered: every height speaker worked out at
+/// 26.6° of elevation instead of 45° (their Y was 0.5 against a horizontal
+/// magnitude of 1.0, so they were never normalised), and the rear surrounds
+/// sat at ±135° where KALA and Studio put them at ±150°. Deriving the vector
+/// from the angles makes the numbers in this file the angles a reader can
+/// check against the standard. See BRIDGE-B2-PLAN.md §B5.
+inline RoomViewSpeaker fromPolar(const float azimuthDeg,
+                                 const float elevationDeg,
+                                 const std::string& name,
+                                 const SpeakerTag tag) {
+  constexpr float kRad = 3.14159265358979323846f / 180.f;
+  const float az = azimuthDeg * kRad;
+  const float el = elevationDeg * kRad;
+  const float horizontal = std::cos(el);
+  return RoomViewSpeaker{
+      Coordinates::Point4D{{-std::sin(az) * horizontal, std::sin(el),
+                            -std::cos(az) * horizontal, 1.0f}},
+      name, tag};
+}
+
 const RoomViewSpeaker kLeftBinaural{
     Coordinates::Point4D{{-0.12f, 0.08f, 0.02f, 1.0f}},
     "LB",
@@ -77,112 +109,34 @@ const RoomViewSpeaker kRightBinuaral{
     kRB,
 };
 
-const RoomViewSpeaker kLeft{
-    Coordinates::Point4D{
-        {-0.5f, 0.0f, -0.866f, 1.0f}},  // X = -sin(30), Y = cos(30)
-    "L",
-    kL,
-};
-const RoomViewSpeaker kRight{
-    Coordinates::Point4D{{0.5f, 0.0f, -0.866f, 1.0f}},
-    "R",
-    kR,
-};
-const RoomViewSpeaker kCentre{
-    Coordinates::Point4D{{0.0f, 0.0f, -1.0f, 1.0f}},
-    "C",
-    kC,
-};
-const RoomViewSpeaker kLeftSurround{
-    Coordinates::Point4D{{-0.94f, 0.0f, 0.342f, 1.0f}},
-    "Ls",
-    kLS,
-};
-const RoomViewSpeaker kRightSurround{
-    Coordinates::Point4D{{0.94f, 0.0f, 0.342f, 1.0f}},
-    "Rs",
-    kRS,
-};
-const RoomViewSpeaker kLeftSideSurround{
-    Coordinates::Point4D{{-1.f, 0.0f, 0.f, 1.0f}},
-    "Lss",
-    kLSS,
-};
-const RoomViewSpeaker kRightSideSurround{
-    Coordinates::Point4D{{1.f, 0.0f, 0.f, 1.0f}},
-    "Rss",
-    kRSS,
-};
-const RoomViewSpeaker kLeftRearSurround{
-    Coordinates::Point4D{{-0.707f, 0.0f, 0.707f, 1.0f}},
-    "Lrs",
-    kLRS,
-};
-const RoomViewSpeaker kRightRearSurround{
-    Coordinates::Point4D{{0.707f, 0.0f, 0.707f, 1.0f}},
-    "Rrs",
-    kRRS,
-
-};
-const RoomViewSpeaker kLeftTopRear{
-    Coordinates::Point4D{{-.94f, 0.5f, 0.342f, 1.0f}},
-    "Ltr",
-    kLTR,
-};
-const RoomViewSpeaker kRightTopRear{
-    Coordinates::Point4D{{0.94f, 0.5f, 0.342f, 1.0f}},
-    "Rtr",
-    kRTR,
-};
-const RoomViewSpeaker kLeftTopFront{
-    Coordinates::Point4D{{-0.5f, 0.5f, -0.866f, 1.0f}},
-    "Ltf",
-    kLTF,
-};
-const RoomViewSpeaker kRightTopFront{
-    Coordinates::Point4D{{0.5f, 0.5f, -0.866f, 1.0f}},
-    "Rtf",
-    kRTF,
-};
+const RoomViewSpeaker kLeft = fromPolar(30.0f, 0.0f, "L", kL);
+const RoomViewSpeaker kRight = fromPolar(-30.0f, 0.0f, "R", kR);
+const RoomViewSpeaker kCentre = fromPolar(0.0f, 0.0f, "C", kC);
+const RoomViewSpeaker kLeftSurround = fromPolar(110.0f, 0.0f, "Ls", kLS);
+const RoomViewSpeaker kRightSurround = fromPolar(-110.0f, 0.0f, "Rs", kRS);
+const RoomViewSpeaker kLeftSideSurround = fromPolar(90.0f, 0.0f, "Lss", kLSS);
+const RoomViewSpeaker kRightSideSurround = fromPolar(-90.0f, 0.0f, "Rss", kRSS);
+const RoomViewSpeaker kLeftRearSurround = fromPolar(150.0f, 0.0f, "Lrs", kLRS);
+const RoomViewSpeaker kRightRearSurround = fromPolar(-150.0f, 0.0f, "Rrs", kRRS);
+const RoomViewSpeaker kLeftTopRear = fromPolar(110.0f, 45.0f, "Ltr", kLTR);
+const RoomViewSpeaker kRightTopRear = fromPolar(-110.0f, 45.0f, "Rtr", kRTR);
+const RoomViewSpeaker kLeftTopFront = fromPolar(30.0f, 45.0f, "Ltf", kLTF);
+const RoomViewSpeaker kRightTopFront = fromPolar(-30.0f, 45.0f, "Rtf", kRTF);
 
 // U+045 replaces U+030 in 7.1.4
-const RoomViewSpeaker kLU045{
-    Coordinates::Point4D{{-0.707f, 0.5f, -0.707f, 1.0f}},
-    "Ltf",
-    kLTF,
-};
+const RoomViewSpeaker kLU045 = fromPolar(45.0f, 45.0f, "Ltf", kLTF);
 // U-045 replaces U+030 in 7.1.4
-const RoomViewSpeaker kRU045{
-    Coordinates::Point4D{{0.707f, 0.5f, -0.707f, 1.0f}},
-    "Rtf",
-    kRTF,
-};
+const RoomViewSpeaker kRU045 = fromPolar(-45.0f, 45.0f, "Rtf", kRTF);
 
-const RoomViewSpeaker kLeftTopBack{
-    Coordinates::Point4D{{-0.707f, 0.5f, .707f, 1.0f}},
-    "Ltb",
-    kLTB,
-};
-const RoomViewSpeaker kRightTopBack{
-    Coordinates::Point4D{{0.707f, 0.5f, .707f, 1.0f}},
-    "Rtb",
-    kRTB,
-};
+const RoomViewSpeaker kLeftTopBack = fromPolar(135.0f, 45.0f, "Ltb", kLTB);
+const RoomViewSpeaker kRightTopBack = fromPolar(-135.0f, 45.0f, "Rtb", kRTB);
 const RoomViewSpeaker kLowFreqEffects{
     Coordinates::Point4D{{0.0f, 0.0f, 0.0f, 1.0f}},
     "LFE",
     kLFE,
 };
-const RoomViewSpeaker kFrontLeft{
-    Coordinates::Point4D{{-0.866f, 0.0f, -0.5f, 1.0f}},
-    "Fl",
-    kFL,
-};
-const RoomViewSpeaker kFrontRight{
-    Coordinates::Point4D{{0.866f, 0.0f, -0.5f, 1.0f}},
-    "Fr",
-    kFR,
-};
+const RoomViewSpeaker kFrontLeft = fromPolar(60.0f, 0.0f, "Fl", kFL);
+const RoomViewSpeaker kFrontRight = fromPolar(-60.0f, 0.0f, "Fr", kFR);
 const RoomViewSpeaker kFrontCentre{
     Coordinates::Point4D{{0.0f, 0.0f, -1.0f, 1.0f}},
     "Fc",
@@ -218,36 +172,12 @@ const RoomViewSpeaker kSideRight{
     "SiR",
     kSIR,
 };
-const RoomViewSpeaker kTopFrontLeft{
-    Coordinates::Point4D{{-0.707f, 0.5f, -0.707f, 1.0f}},
-    "TpFl",
-    kTPFL,
-};
-const RoomViewSpeaker kTopFrontRight{
-    Coordinates::Point4D{{0.707f, 0.5f, -0.707f, 1.0f}},
-    "TpFr",
-    kTPFR,
-};
-const RoomViewSpeaker kTopBackLeft{
-    Coordinates::Point4D{{-0.707f, 0.5f, 0.707f, 1.0f}},
-    "TpBL",
-    kTPBL,
-};
-const RoomViewSpeaker kTopBackRight{
-    Coordinates::Point4D{{0.707f, 0.5f, 0.707f, 1.0f}},
-    "TpBr",
-    kTPBR,
-};
-const RoomViewSpeaker kTopSideLeft{
-    Coordinates::Point4D{{-1.0f, 0.5f, 0.f, 1.0f}},
-    "TpSiL",
-    kTPSIL,
-};
-const RoomViewSpeaker kTopSideRight{
-    Coordinates::Point4D{{1.0f, 0.5f, 0.f, 1.0f}},
-    "TpSiR",
-    kTPSIR,
-};
+const RoomViewSpeaker kTopFrontLeft = fromPolar(45.0f, 45.0f, "TpFl", kTPFL);
+const RoomViewSpeaker kTopFrontRight = fromPolar(-45.0f, 45.0f, "TpFr", kTPFR);
+const RoomViewSpeaker kTopBackLeft = fromPolar(135.0f, 45.0f, "TpBL", kTPBL);
+const RoomViewSpeaker kTopBackRight = fromPolar(-135.0f, 45.0f, "TpBr", kTPBR);
+const RoomViewSpeaker kTopSideLeft = fromPolar(90.0f, 45.0f, "TpSiL", kTPSIL);
+const RoomViewSpeaker kTopSideRight = fromPolar(-90.0f, 45.0f, "TpSiR", kTPSIR);
 
 // Returns a room view speaker set for a given speaker layout.
 inline std::vector<RoomViewSpeaker> getRoomViewSpeakers(

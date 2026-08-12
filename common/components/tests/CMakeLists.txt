@@ -17,3 +17,6 @@ eclipsa_add_test(test_export_error_banner ExportErrorBanner_test.cpp "components
 # B5 / V2-01-UI — the midnight-scope panner pad. Also renders the parity
 # screenshots when FRIDAY_B5_SHOTS is set.
 eclipsa_add_test(test_friday_panner_scope FridayPannerScope_test.cpp "components;processors")
+
+# §B6-3 — room-view speaker geometry, held to the layout KALA renders.
+eclipsa_add_test(test_room_view_speakers RoomViewSpeakers_test.cpp "components;processors")
