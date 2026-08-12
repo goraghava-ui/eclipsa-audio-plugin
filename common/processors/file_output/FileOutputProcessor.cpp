@@ -264,6 +264,66 @@ void FileOutputProcessor::initializeFileExport(FileExport& config) {
   }
 }
 
+#if FRIDAY_KALA_EXPORT
+void FileOutputProcessor::writeStudioHandoff(const FileExport& config) {
+  if (!kalaIamfWriter_) return;
+  const std::vector<friday::ObjectReceiver::Object>& captured =
+      kalaIamfWriter_->renderedObjects();
+  if (captured.empty()) return;
+
+  const juce::String kExportFile = config.getExportFile();
+  const std::string sessionPath =
+      friday::sessionPathFor(kExportFile.toStdString());
+
+  // Point every object at the per-audio-element WAV this export already wrote,
+  // so the handed-off session passes Session.validate() instead of opening
+  // with "missing file" problems. Match on name first -- the panner's layout
+  // name is the audio element it was assigned to -- and fall back to position,
+  // which is right for the common single-element case.
+  juce::OwnedArray<AudioElement> audioElements;
+  audioElementRepository_.getAll(audioElements);
+
+  std::vector<friday::SessionObject> objects;
+  objects.reserve(captured.size());
+  for (size_t i = 0; i < captured.size(); ++i) {
+    friday::SessionObject o;
+    o.name = captured[i].name.empty()
+                 ? ("object " + std::to_string(i + 1))
+                 : captured[i].name;
+    o.keyframes = captured[i].keyframes;
+
+    int match = -1;
+    for (int e = 0; e < audioElements.size(); ++e) {
+      if (audioElements[e]->getName().toStdString() == captured[i].name) {
+        match = e;
+        break;
+      }
+    }
+    if (match < 0 && static_cast<int>(i) < audioElements.size()) {
+      match = static_cast<int>(i);
+    }
+    if (match >= 0) {
+      const juce::String kWav =
+          kExportFile + "_" + audioElements[match]->getName() + ".wav";
+      if (juce::File(kWav).existsAsFile()) o.file_path = kWav.toStdString();
+    }
+    objects.push_back(std::move(o));
+  }
+
+  const std::string json = friday::buildSessionJson(
+      juce::File(kExportFile).getFileNameWithoutExtension().toStdString(),
+      static_cast<int>(sampleRate_), KalaIamfWriter::kDefaultTargetLkfs, "en",
+      objects);
+  if (!friday::writeSessionFile(sessionPath, json)) {
+    LOG_ERROR(0, "Studio handoff: cannot write " + sessionPath);
+    return;
+  }
+  LOG_ANALYTICS(0, "Studio handoff written: " + sessionPath + " (" +
+                       std::to_string(objects.size()) + " object(s))");
+  friday::sharedStudioLink().sendHandoff(sessionPath);
+}
+#endif
+
 void FileOutputProcessor::closeFileExport(const FileExport& config) {
   LOG_ANALYTICS(0, "closing writers and exporting IAMF file");
   // close the output file, since rendering is completed
@@ -291,6 +351,8 @@ void FileOutputProcessor::closeFileExport(const FileExport& config) {
       if (freshConfig.recordExportErrorIfUnset(kFileWriteFailed)) {
         fileExportRepository_.update(freshConfig);
       }
+    } else {
+      writeStudioHandoff(config);
     }
     kalaIamfWriter_ = nullptr;
   }

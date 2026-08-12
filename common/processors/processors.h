@@ -39,6 +39,7 @@ END_JUCE_MODULE_DECLARATION
 #include "friday/FridayObjectCaptureProcessor.h"
 #include "friday/FridayObjectTransport.h"
 #include "friday/FridayStudioLink.h"
+#include "friday/FridayStudioSession.h"
 #endif
 #include "file_output/FileOutputProcessor.h"
 #include "file_output/FileOutputProcessor_PremierePro.h"

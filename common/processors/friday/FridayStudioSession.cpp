@@ -1,0 +1,108 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "FridayStudioSession.h"
+
+#include <cmath>
+#include <cstdio>
+
+#include "FridayStudioLink.h"
+
+namespace friday {
+
+namespace {
+
+std::string num(double v, int decimals = 4) {
+  if (!std::isfinite(v)) v = 0.0;
+  char buf[48];
+  std::snprintf(buf, sizeof(buf), "%.*f", decimals, v);
+  return buf;
+}
+
+std::string keyframeJson(const ObjectReceiver::Keyframe& k) {
+  // 6 decimals on t: at 48 kHz one sample is ~2e-5 s, so 6 keeps keyframe
+  // times distinguishable at block resolution.
+  return "{\"t\":" + num(k.t, 6) + ",\"azimuth\":" + num(k.az_deg) +
+         ",\"elevation\":" + num(k.el_deg) + ",\"spread\":" + num(k.spread) +
+         ",\"gain_db\":" + num(k.gain_db) + ",\"curve\":\"linear\"}";
+}
+
+}  // namespace
+
+std::string buildSessionJson(const std::string& name, int sampleRate,
+                             float targetLkfs, const std::string& language,
+                             const std::vector<SessionObject>& objects) {
+  const std::string esc = StudioLink::jsonEscape(name);
+  std::string out;
+  out += "{\n";
+  out += "  \"friday_studio\": 1,\n";
+  out += "  \"name\": \"" + esc + "\",\n";
+  out += "  \"sample_rate\": " + std::to_string(sampleRate) + ",\n";
+  out += "  \"target_lkfs\": " + num(targetLkfs, 2) + ",\n";
+  out += "  \"language\": \"" + StudioLink::jsonEscape(language) + "\",\n";
+  out += "  \"label\": \"FRIDAY Bridge handoff\",\n";
+  out += "  \"binaural_on_headphones\": true,\n";
+  out += "  \"presentations\": [],\n";
+  out += "  \"video_path\": \"\",\n";
+  out += "  \"versions\": [],\n";
+  out += "  \"scene_snapshots\": [],\n";
+  out += "  \"layout_trims\": {},\n";
+  out += "  \"beds\": [],\n";
+  out += "  \"objects\": [";
+  for (size_t i = 0; i < objects.size(); ++i) {
+    const SessionObject& o = objects[i];
+    out += i > 0 ? ",\n    " : "\n    ";
+    out += "{\"name\": \"" + StudioLink::jsonEscape(o.name) +
+           "\", \"file_path\": \"" + StudioLink::jsonEscape(o.file_path) +
+           "\", \"keyframes\": [";
+    if (o.keyframes.empty()) {
+      // from_dict defaults a missing list to one keyframe at t=0; be explicit
+      // rather than relying on that, so the file reads the same as it loads.
+      out += keyframeJson(ObjectReceiver::Keyframe{});
+    } else {
+      for (size_t k = 0; k < o.keyframes.size(); ++k) {
+        if (k > 0) out += ", ";
+        out += keyframeJson(o.keyframes[k]);
+      }
+    }
+    out += "], \"mute\": false, \"binaural_mode\": \"mid\", \"group\": \"\", "
+           "\"zone\": \"\", \"snap\": false}";
+  }
+  out += objects.empty() ? "]\n" : "\n  ]\n";
+  out += "}\n";
+  return out;
+}
+
+bool writeSessionFile(const std::string& path, const std::string& json) {
+  std::FILE* f = std::fopen(path.c_str(), "wb");
+  if (f == nullptr) return false;
+  const size_t written = std::fwrite(json.data(), 1, json.size(), f);
+  const bool closed = std::fclose(f) == 0;
+  return closed && written == json.size();
+}
+
+std::string sessionPathFor(const std::string& exportFilePath) {
+  const std::string kSuffix = ".iamf";
+  if (exportFilePath.size() >= kSuffix.size() &&
+      exportFilePath.compare(exportFilePath.size() - kSuffix.size(),
+                             kSuffix.size(), kSuffix) == 0) {
+    return exportFilePath.substr(0, exportFilePath.size() - kSuffix.size()) +
+           ".fstudio";
+  }
+  return exportFilePath + ".fstudio";
+}
+
+}  // namespace friday

@@ -37,6 +37,7 @@
 #include "iamf_export_utils/IAMFFileWriter.h"
 #if FRIDAY_KALA_EXPORT
 #include "../friday/FridayStudioLink.h"
+#include "../friday/FridayStudioSession.h"
 #include "iamf_export_utils/KalaIamfWriter.h"
 #endif
 
@@ -152,6 +153,10 @@ class FileOutputProcessor : public ProcessorBase {
   // untouched. See BRIDGE-B2-PLAN.md.
   std::unique_ptr<KalaIamfWriter> kalaIamfWriter_;
   bool kalaExportEnabled_ = true;  // see setKalaExportEnabled()
+  /// Writes the .fstudio next to the .iamf and tells Studio about it (V2-02).
+  /// Called only after a successful KALA export, so the handoff never points
+  /// at a file that was not produced.
+  void writeStudioHandoff(const FileExport& config);
 #endif
   void* securityScopedHandle_ = nullptr;
   //==============================================================================

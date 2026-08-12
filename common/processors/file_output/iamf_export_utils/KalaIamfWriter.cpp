@@ -119,6 +119,9 @@ bool KalaIamfWriter::close() {
                        std::to_string(objects[0].spread) + " gain=" +
                        std::to_string(objects[0].gain_db));
 
+  rendered_ = objects;  // for the .fstudio handoff, before the encode consumes
+                        // anything
+
   KalaSession* session = kala_session_new(48000, "7.1.4");
   if (session == nullptr) {
     LOG_ERROR(0, std::string("kala_session_new failed: ") + kala_last_error());

@@ -61,6 +61,13 @@ class KalaIamfWriter {
   float appliedGainDb() const { return appliedGainDb_; }
   size_t objectsRendered() const { return objectsRendered_; }
 
+  /// What KALA actually rendered, kept so the exporter can write a matching
+  /// .fstudio handoff (V2-02) without re-reading the transport, which has
+  /// already been reset by then.
+  const std::vector<friday::ObjectReceiver::Object>& renderedObjects() const {
+    return rendered_;
+  }
+
   /// Cuts the host's post-render silent flush off the capture, equally across
   /// every object so their relative timing is preserved. Public for the tests.
   static void trimTrailingSilence(
@@ -72,5 +79,6 @@ class KalaIamfWriter {
   std::string filename_;
   bool open_ = false;
   float appliedGainDb_ = 0.0f;
+  std::vector<friday::ObjectReceiver::Object> rendered_;
   size_t objectsRendered_ = 0;
 };
