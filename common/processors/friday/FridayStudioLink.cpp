@@ -21,6 +21,13 @@
 #include <cmath>
 #include <cstdio>
 
+// gpac/setup.h macro-renames snprintf to _snprintf on Windows, which breaks
+// std::snprintf; these files want the real C++ one.
+#ifdef snprintf
+#undef snprintf
+#endif
+
+
 namespace friday {
 
 namespace {

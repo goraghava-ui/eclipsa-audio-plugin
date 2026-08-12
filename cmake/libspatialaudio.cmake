@@ -78,6 +78,14 @@ endif()
 # LGPL-2.1: link the SHARED target. Never `spatialaudio-static` — see the note
 # above and CLEAN-ROOM-LOG.md §3.1.
 if (TARGET spatialaudio-shared)
+    # Windows: the sources carry no __declspec exports (the Linux .so never
+    # needed them), so MSVC emits the DLL without an import .lib and the
+    # plugin link dies at LNK1181. Export everything via a generated .def —
+    # the LGPL shared-linking rationale above is platform-independent.
+    if (WIN32)
+        set_target_properties(spatialaudio-shared PROPERTIES
+                WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+    endif ()
     target_link_libraries(libspatialaudio INTERFACE spatialaudio-shared)
 elseif (TARGET spatialaudio)
     target_link_libraries(libspatialaudio INTERFACE spatialaudio)
