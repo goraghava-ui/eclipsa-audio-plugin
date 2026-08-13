@@ -143,6 +143,12 @@ if (FRIDAY_KALA_EXPORT)
     target_include_directories(kala_cabi INTERFACE "${_KALA_CABI_INCLUDE}")
     target_link_libraries(kala_cabi INTERFACE "${KALA_CABI_LIBRARY}")
     target_compile_definitions(kala_cabi INTERFACE FRIDAY_KALA_EXPORT=1)
+    if (WIN32)
+        # Not a CMake target (imported .lib), so it can't ride
+        # ECLIPSA_DELAYLOAD_LIBS — name the DLL directly. Resolved from the
+        # bundle by WinDelayLoadHook.cpp.
+        target_link_options(kala_cabi INTERFACE "/DELAYLOAD:kala_cabi.dll")
+    endif ()
 endif ()
 
 #====================================================================

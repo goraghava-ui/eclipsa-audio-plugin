@@ -42,8 +42,20 @@ function(copy_resources target plugin_path)
             return()
         endif ()
 
+        # FRIDAY: spatialaudio rides in the bundle exactly like the vendored
+        # DLLs (shared for LGPL-2.1 — see cmake/libspatialaudio.cmake), so it
+        # needs the same copy + delay-load treatment; without /DELAYLOAD it
+        # is a load-time import that VST3 hosts (no SetDllDirectory, unlike
+        # AAX hosts) cannot resolve from the bundle, and the plugin never
+        # loads outside Pro Tools. WinDelayLoadHook.cpp resolves the
+        # delay-loads from the module's own directory.
+        set(_bundle_deps ${ECLIPSA_VENDORED_LIBS})
+        if (TARGET spatialaudio-shared)
+            list(APPEND _bundle_deps spatialaudio-shared)
+        endif ()
+
         set(COPY_COMMANDS COMMAND ${CMAKE_COMMAND} -E make_directory "${DEST_ROOT}")
-        foreach (_dep IN LISTS ECLIPSA_VENDORED_LIBS)
+        foreach (_dep IN LISTS _bundle_deps)
             list(APPEND COPY_COMMANDS
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${_dep}>" "${DEST_ROOT}/")
             target_link_options(${target} PRIVATE "/DELAYLOAD:$<TARGET_FILE_NAME:${_dep}>")
@@ -52,7 +64,7 @@ function(copy_resources target plugin_path)
 
         set(VST3_SIGNING_DIR "${CMAKE_CURRENT_BINARY_DIR}/${BUILD_LIB_DIR}")
         set(SIGNING_COMMANDS COMMAND ${CMAKE_COMMAND} -E make_directory "${VST3_SIGNING_DIR}")
-        foreach (_dep IN LISTS ECLIPSA_VENDORED_LIBS)
+        foreach (_dep IN LISTS _bundle_deps)
             list(APPEND SIGNING_COMMANDS
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${_dep}>" "${VST3_SIGNING_DIR}/")
         endforeach ()

@@ -88,6 +88,7 @@ set(ECLIPSA_IAMF_LIB_DIR "${CMAKE_BINARY_DIR}/_deps/libiamf-build/$<CONFIG>" CAC
 set(ECLIPSA_STATIC_LIB_SUFFIX ".lib" CACHE STRING "")
 set(ECLIPSA_PLUGIN_PLATFORM_SOURCES
         "${CMAKE_SOURCE_DIR}/common/processors/file_output/FilePermissions_windows.cpp"
+        "${CMAKE_SOURCE_DIR}/common/processors/friday/WinDelayLoadHook.cpp"
         CACHE STRING "")
 set(ECLIPSA_PLATFORM_LIBS
         vendored_gpac_crypto
@@ -157,6 +158,11 @@ set(ECLIPSA_DELAYLOAD_LIBS
         libzmq
         vendored_gpac_crypto
         vendored_gpac_ssl
+        # FRIDAY: these two ride in the bundle too; delay-loading them (plus
+        # the WinDelayLoadHook module-directory resolver) is what lets the
+        # plugin load in hosts that don't SetDllDirectory the bundle (VST3 /
+        # REAPER — AAX hosts do it for us).
+        spatialaudio-shared
         CACHE STRING ""
 )
 
