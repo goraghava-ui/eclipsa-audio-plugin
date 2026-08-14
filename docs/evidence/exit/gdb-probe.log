@@ -1,0 +1,163 @@
+
+This GDB supports auto-downloading debuginfo from the following URLs:
+  <https://debuginfod.ubuntu.com>
+Enable debuginfod for this session? (y or [n]) [answered N; input not from terminal]
+Debuginfod has been disabled.
+To make this setting permanent, add 'set debuginfod enabled off' to .gdbinit.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/usr/lib/x86_64-linux-gnu/libthread_db.so.1".
+[New Thread 0x7ffff5ecc6c0 (LWP 64172)]
+[New Thread 0x7ffff56cb6c0 (LWP 64173)]
+[New Thread 0x7ffff4eca6c0 (LWP 64174)]
+[New Thread 0x7ffff46c96c0 (LWP 64175)]
+[New Thread 0x7ffff44c86c0 (LWP 64176)]
+[New Thread 0x7ffff42c76c0 (LWP 64177)]
+[New Thread 0x7fffdffff6c0 (LWP 64178)]
+[Detaching after fork from child process 64179]
+[New Thread 0x7fffdfdfe6c0 (LWP 64182)]
+[Detaching after fork from child process 64183]
+[New Thread 0x7fffcb5ff6c0 (LWP 64194)]
+[New Thread 0x7fffc83ff6c0 (LWP 64195)]
+[New Thread 0x7fffc7bfe6c0 (LWP 64196)]
+[New Thread 0x7fffc73fd6c0 (LWP 64197)]
+[New Thread 0x7fffc6bfc6c0 (LWP 64198)]
+[New Thread 0x7fffc63fb6c0 (LWP 64199)]
+[New Thread 0x7fffc5bfa6c0 (LWP 64200)]
+[New Thread 0x7fffc53f96c0 (LWP 64201)]
+[New Thread 0x7fffc4bf86c0 (LWP 64202)]
+[New Thread 0x7fffc43f76c0 (LWP 64203)]
+[New Thread 0x7fffc3bf66c0 (LWP 64204)]
+[New Thread 0x7fffc33f56c0 (LWP 64205)]
+[New Thread 0x7fffc2bf46c0 (LWP 64206)]
+[New Thread 0x7fffc23f36c0 (LWP 64207)]
+[New Thread 0x7fffc1bf26c0 (LWP 64208)]
+[New Thread 0x7fffc13f16c0 (LWP 64209)]
+[New Thread 0x7fffc0bf06c0 (LWP 64210)]
+[New Thread 0x7fffc03ef6c0 (LWP 64211)]
+[New Thread 0x7fffbfbee6c0 (LWP 64212)]
+[New Thread 0x7fffbf3ed6c0 (LWP 64213)]
+[New Thread 0x7fffbebec6c0 (LWP 64214)]
+[New Thread 0x7fffbe3eb6c0 (LWP 64215)]
+[New Thread 0x7fffbdbea6c0 (LWP 64216)]
+[New Thread 0x7fffbd3e96c0 (LWP 64217)]
+[New Thread 0x7fffbcbe86c0 (LWP 64218)]
+[New Thread 0x7fffb5bff6c0 (LWP 64219)]
+[New Thread 0x7fffb53fe6c0 (LWP 64220)]
+[New Thread 0x7fffb4bfd6c0 (LWP 64221)]
+[New Thread 0x7fff4ffff6c0 (LWP 64222)]
+[New Thread 0x7fff4f7fe6c0 (LWP 64223)]
+[New Thread 0x7fff4effd6c0 (LWP 64224)]
+[New Thread 0x7fff4e7fc6c0 (LWP 64225)]
+[New Thread 0x7fff4dffb6c0 (LWP 64226)]
+[New Thread 0x7fff4d7fa6c0 (LWP 64227)]
+[New Thread 0x7fff4cff96c0 (LWP 64228)]
+[New Thread 0x7fff4c7f86c0 (LWP 64229)]
+[New Thread 0x7fff4bff76c0 (LWP 64230)]
+[New Thread 0x7fff4b7f66c0 (LWP 64231)]
+[New Thread 0x7fff4aff56c0 (LWP 64232)]
+[New Thread 0x7fff4a7f46c0 (LWP 64233)]
+[New Thread 0x7fff49ff36c0 (LWP 64234)]
+[New Thread 0x7fff497f26c0 (LWP 64235)]
+[New Thread 0x7fff48ff16c0 (LWP 64236)]
+[Thread 0x7fff49ff36c0 (LWP 64234) exited]
+[New Thread 0x7fff3bfff6c0 (LWP 64237)]
+[New Thread 0x7fff3b7fe6c0 (LWP 64238)]
+[New Thread 0x7fff3affd6c0 (LWP 64239)]
+[New Thread 0x7fff3a7fc6c0 (LWP 64240)]
+[New Thread 0x7fff39ffb6c0 (LWP 64241)]
+[New Thread 0x7fff38dff6c0 (LWP 64242)]
+[New Thread 0x7fff0ffff6c0 (LWP 64243)]
+[New Thread 0x7fff0effd6c0 (LWP 64244)]
+[New Thread 0x7fff0e7fc6c0 (LWP 64245)]
+[New Thread 0x7fff0dffb6c0 (LWP 64246)]
+[New Thread 0x7fff0d7fa6c0 (LWP 64247)]
+[New Thread 0x7fff0cff96c0 (LWP 64248)]
+[New Thread 0x7ffefffff6c0 (LWP 64249)]
+[New Thread 0x7ffeff7fe6c0 (LWP 64250)]
+[New Thread 0x7ffefeffd6c0 (LWP 64251)]
+[New Thread 0x7ffefe7fc6c0 (LWP 64252)]
+[Thread 0x7ffeff7fe6c0 (LWP 64250) exited]
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786710089.770564   64169 obr_impl.cc:341] Added audio element: kLayoutMono.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786710089.770603   64169 obr_impl.cc:60] Resetting DSP.
+I0000 00:00:1786710089.770637   64169 obr_impl.cc:112] Initializing DSP:
+I0000 00:00:1786710089.770640   64169 obr_impl.cc:113]   - Number of input channels: 1
+I0000 00:00:1786710089.770642   64169 obr_impl.cc:114]   - Binaural filters Ambisonic order: 3
+I0000 00:00:1786710089.770644   64169 obr_impl.cc:115]   - Number of Ambisonic mix bed channels: 16
+I0000 00:00:1786710089.776818   64169 obr_impl.cc:341] Added audio element: kLayoutMono.
+I0000 00:00:1786710089.776842   64169 obr_impl.cc:60] Resetting DSP.
+I0000 00:00:1786710089.776866   64169 obr_impl.cc:112] Initializing DSP:
+I0000 00:00:1786710089.776868   64169 obr_impl.cc:113]   - Number of input channels: 1
+I0000 00:00:1786710089.776871   64169 obr_impl.cc:114]   - Binaural filters Ambisonic order: 3
+I0000 00:00:1786710089.776872   64169 obr_impl.cc:115]   - Number of Ambisonic mix bed channels: 16
+[Thread 0x7ffff42c76c0 (LWP 64177) exited]
+[Thread 0x7fffdffff6c0 (LWP 64178) exited]
+[New Thread 0x7fffdffff6c0 (LWP 64253)]
+[Thread 0x7fffdffff6c0 (LWP 64253) exited]
+[Thread 0x7fffc7bfe6c0 (LWP 64196) exited]
+[Thread 0x7fffc23f36c0 (LWP 64207) exited]
+[Thread 0x7fffc2bf46c0 (LWP 64206) exited]
+[Thread 0x7fffc33f56c0 (LWP 64205) exited]
+[Thread 0x7fffc3bf66c0 (LWP 64204) exited]
+[Thread 0x7fffc43f76c0 (LWP 64203) exited]
+[Thread 0x7fffc4bf86c0 (LWP 64202) exited]
+[Thread 0x7fffc53f96c0 (LWP 64201) exited]
+[Thread 0x7fffc5bfa6c0 (LWP 64200) exited]
+[Thread 0x7fffc63fb6c0 (LWP 64199) exited]
+[Thread 0x7fffc6bfc6c0 (LWP 64198) exited]
+[Thread 0x7fffc73fd6c0 (LWP 64197) exited]
+[Thread 0x7fffbcbe86c0 (LWP 64218) exited]
+[Thread 0x7fffbd3e96c0 (LWP 64217) exited]
+[Thread 0x7fffbdbea6c0 (LWP 64216) exited]
+[Thread 0x7fffbe3eb6c0 (LWP 64215) exited]
+[Thread 0x7fffbebec6c0 (LWP 64214) exited]
+[Thread 0x7fffbf3ed6c0 (LWP 64213) exited]
+[Thread 0x7fffbfbee6c0 (LWP 64212) exited]
+[Thread 0x7fffc03ef6c0 (LWP 64211) exited]
+[Thread 0x7fffc0bf06c0 (LWP 64210) exited]
+[Thread 0x7fffc13f16c0 (LWP 64209) exited]
+[Thread 0x7fffc1bf26c0 (LWP 64208) exited]
+[Thread 0x7fffc83ff6c0 (LWP 64195) exited]
+[Thread 0x7fff48ff16c0 (LWP 64236) exited]
+[Thread 0x7ffefe7fc6c0 (LWP 64252) exited]
+[Thread 0x7ffefeffd6c0 (LWP 64251) exited]
+[New Thread 0x7ffeff7fe6c0 (LWP 64255)]
+[New Thread 0x7ffefeffd6c0 (LWP 64257)]
+[New Thread 0x7ffefe7fc6c0 (LWP 64256)]
+[Thread 0x7ffeff7fe6c0 (LWP 64255) exited]
+[Thread 0x7fff497f26c0 (LWP 64235) exited]
+[Thread 0x7fff4b7f66c0 (LWP 64231) exited]
+[Thread 0x7fff4aff56c0 (LWP 64232) exited]
+[Thread 0x7fff4a7f46c0 (LWP 64233) exited]
+[Thread 0x7fff4bff76c0 (LWP 64230) exited]
+[Thread 0x7fff0dffb6c0 (LWP 64246) exited]
+[Thread 0x7fff0e7fc6c0 (LWP 64245) exited]
+[Thread 0x7fff0effd6c0 (LWP 64244) exited]
+[Thread 0x7fff0cff96c0 (LWP 64248) exited]
+[Thread 0x7ffefffff6c0 (LWP 64249) exited]
+[Thread 0x7fff0d7fa6c0 (LWP 64247) exited]
+[Thread 0x7ffefeffd6c0 (LWP 64257) exited]
+[Thread 0x7ffefe7fc6c0 (LWP 64256) exited]
+[Thread 0x7fff0ffff6c0 (LWP 64243) exited]
+[Thread 0x7fff38dff6c0 (LWP 64242) exited]
+[Thread 0x7fffcb5ff6c0 (LWP 64194) exited]
+[Thread 0x7fff39ffb6c0 (LWP 64241) exited]
+[Thread 0x7fff3a7fc6c0 (LWP 64240) exited]
+[Thread 0x7fff3affd6c0 (LWP 64239) exited]
+[Thread 0x7fff3bfff6c0 (LWP 64237) exited]
+[Thread 0x7fff3b7fe6c0 (LWP 64238) exited]
+
+Thread 1 "reaper" received signal SIGSEGV, Segmentation fault.
+0x00007fff393128b0 in ?? ()
+
+===== FAULTED =====
+#0  0x00007fff393128b0 in ?? ()
+#1  0x00007fffbbc6c1bd in boost::log::v2s_mt_posix::core::~core() () from /home/friday/.vst3/Eclipsa Audio Renderer.vst3/Contents/x86_64-linux/Eclipsa Audio Renderer.so
+#2  0x00007fffbbc6f4eb in boost::detail::sp_counted_impl_p<boost::log::v2s_mt_posix::core>::dispose() () from /home/friday/.vst3/Eclipsa Audio Renderer.vst3/Contents/x86_64-linux/Eclipsa Audio Renderer.so
+#3  0x00007fffbbc6f423 in boost::shared_ptr<boost::log::v2s_mt_posix::core>::~shared_ptr() () from /home/friday/.vst3/Eclipsa Audio Renderer.vst3/Contents/x86_64-linux/Eclipsa Audio Renderer.so
+#4  0x00007ffff76485e1 in __run_exit_handlers (status=0, listp=0x7ffff7812680 <__exit_funcs>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at ./stdlib/exit.c:118
+#5  0x00007ffff76486be in __GI_exit (status=<optimized out>) at ./stdlib/exit.c:148
+#6  0x00007ffff762a608 in __libc_start_call_main (main=main@entry=0x40ad50, argc=argc@entry=4, argv=argv@entry=0x7fffffffd678) at ../sysdeps/nptl/libc_start_call_main.h:83
+#7  0x00007ffff762a718 in __libc_start_main_impl (main=0x40ad50, argc=4, argv=0x7fffffffd678, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffd668) at ../csu/libc-start.c:360
+#8  0x000000000041a55a in _start ()

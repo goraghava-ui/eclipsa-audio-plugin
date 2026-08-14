@@ -1,0 +1,10 @@
+===== FAULTED =====
+#0  0x00007fff393128b0 in ?? ()
+#1  0x00007fffbbc6c1bd in boost::log::v2s_mt_posix::core::~core() () from /home/friday/.vst3/Eclipsa Audio Renderer.vst3/Contents/x86_64-linux/Eclipsa Audio Renderer.so
+#2  0x00007fffbbc6f4eb in boost::detail::sp_counted_impl_p<boost::log::v2s_mt_posix::core>::dispose() () from /home/friday/.vst3/Eclipsa Audio Renderer.vst3/Contents/x86_64-linux/Eclipsa Audio Renderer.so
+#3  0x00007fffbbc6f423 in boost::shared_ptr<boost::log::v2s_mt_posix::core>::~shared_ptr() () from /home/friday/.vst3/Eclipsa Audio Renderer.vst3/Contents/x86_64-linux/Eclipsa Audio Renderer.so
+#4  0x00007ffff76485e1 in __run_exit_handlers (status=0, listp=0x7ffff7812680 <__exit_funcs>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at ./stdlib/exit.c:118
+#5  0x00007ffff76486be in __GI_exit (status=<optimized out>) at ./stdlib/exit.c:148
+#6  0x00007ffff762a608 in __libc_start_call_main (main=main@entry=0x40ad50, argc=argc@entry=4, argv=argv@entry=0x7fffffffd678) at ../sysdeps/nptl/libc_start_call_main.h:83
+#7  0x00007ffff762a718 in __libc_start_main_impl (main=0x40ad50, argc=4, argv=0x7fffffffd678, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffd668) at ../csu/libc-start.c:360
+#8  0x000000000041a55a in _start ()

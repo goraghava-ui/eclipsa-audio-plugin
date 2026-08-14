@@ -1,0 +1,8 @@
+=== clean exit gate (timeout harness kept; exit code asserted) ===
+scan+load     exit=0
+export run 1  exit=0
+export run 2  exit=0
+sweep export  exit=0
+
+quit_probe.lua x3 before fix: exit=139 (SIGSEGV) x3
+quit_probe.lua x3 after  fix: exit=0 x3

@@ -93,6 +93,56 @@ void Logger::init(const std::string& pluginName, size_t maxFileSizeMB,
     // Set the severity filter using the provided parameter
     boost::log::core::get()->set_filter(boost::log::trivial::severity >=
                                         minSeverity);
+
+    // Keep the host alive through its own shutdown.
+    //
+    // REAPER dies on exit with this plugin loaded, every time:
+    //
+    //   #0  0x00007fff393128b0 in ?? ()                    <- unmapped
+    //   #1  boost::log::v2s_mt_posix::core::~core()        <- in our .so
+    //   #2  sp_counted_impl_p<core>::dispose()
+    //   #3  shared_ptr<core>::~shared_ptr()
+    //   #4  __run_exit_handlers                            <- process exit
+    //
+    // Boost.Log's core is a static shared_ptr compiled into this .so. The host
+    // unloads plugins during shutdown, then libc runs the exit handlers, and
+    // ~core() calls into code that is no longer there.
+    //
+    // Emptying the core is NOT enough, and that was measured rather than
+    // assumed: removing all sinks still crashed, and so did additionally
+    // resetting the filter, clearing the global attributes and disabling
+    // logging. The fault is in ~core() itself, not in what it holds.
+    //
+    // So the core must never be destroyed. One reference is deliberately
+    // leaked here, which pins the refcount above zero for the life of the
+    // process; ~core() then simply never runs. The allocation is reclaimed by
+    // the OS at exit like everything else.
+    //
+    // Nothing is lost by it. The detacher below still flushes and closes the
+    // file sink deterministically, while this .so is unquestionably still
+    // mapped, so every log line is on disk before shutdown starts -- which is
+    // more than the crashing version could promise.
+    static auto* const coreKeepAlive =
+        new boost::shared_ptr<boost::log::core>(boost::log::core::get());
+    (void)coreKeepAlive;
+
+    // Flush and close the sinks at a moment we control. Function-local
+    // statics are destroyed in reverse order of construction, and the calls
+    // above have already built Boost's core, so this runs before any of
+    // Boost's own teardown would have.
+    static const struct SinkDetacher {
+      ~SinkDetacher() {
+        try {
+          if (auto core = boost::log::core::get()) {
+            core->flush();
+            core->remove_all_sinks();
+          }
+        } catch (...) {
+          // Teardown must not throw; a lost log line beats a dead host.
+        }
+      }
+    } sinkDetacher;
+    (void)sinkDetacher;
   } catch (const std::exception& e) {
     std::cerr << "Error initializing logger: " << e.what() << std::endl;
   }
