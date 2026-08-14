@@ -1,0 +1,25 @@
+
+  A: bridge_b.iamf
+  B: old-out/B7_old.iamf
+  96000 frames, 12 ch @ 48 kHz
+
+   ch name   A rms dBFS  B rms dBFS  max|delta| dBFS
+    1 L            -inf        -inf             -inf
+    2 R            -inf        -inf             -inf
+    3 C            -inf        -inf             -inf
+    4 LFE          -inf        -inf             -inf
+    5 Ls           -inf        -inf             -inf
+    6 Rs           -inf        -inf             -inf
+    7 Lrs          -inf        -inf             -inf
+    8 Rrs          -inf        -inf             -inf
+    9 TFL        -19.03      -19.01           -67.63
+   10 TFR        -19.03      -19.01           -67.63
+   11 TRL        -41.70      -57.14           -40.29
+   12 TRR        -41.70      -57.14           -40.29
+
+  worst channel: TRR (ch12) at -40.29 dBFS
+  sample-exact:  False
+
+  GATE GA (-90 dBFS): FAIL
+
+counterfactual exit=1

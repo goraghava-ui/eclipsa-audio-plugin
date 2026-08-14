@@ -1,0 +1,8 @@
+=== B7 gate A: dome-change regression, az +30.000 el 0, elevation=none ===
+audio device running=1 mode=Dummy Audio
+renderer state applied=true
+panner state applied=true
+requested X=-25.0000000 Y=43.3012695
+captured X=-25.0000000 Y=43.3012695 Z=0.0000000
+bounce issued
+iamf exists=true

@@ -1,0 +1,25 @@
+
+  A: bridge_b.iamf
+  B: ref60-out/B7_ref.iamf
+  96000 frames, 12 ch @ 48 kHz
+
+   ch name   A rms dBFS  B rms dBFS  max|delta| dBFS
+    1 L            -inf        -inf             -inf
+    2 R            -inf        -inf             -inf
+    3 C            -inf        -inf             -inf
+    4 LFE          -inf        -inf             -inf
+    5 Ls           -inf        -inf             -inf
+    6 Rs           -inf        -inf             -inf
+    7 Lrs          -inf        -inf             -inf
+    8 Rrs          -inf        -inf             -inf
+    9 TFL        -19.03      -19.03             -inf
+   10 TFR        -19.03      -19.03             -inf
+   11 TRL        -41.70      -41.70             -inf
+   12 TRR        -41.70      -41.70             -inf
+
+  worst channel: TRR (ch12) at -inf dBFS
+  sample-exact:  True
+
+  GATE GA (-90 dBFS): PASS
+
+B exit=0
