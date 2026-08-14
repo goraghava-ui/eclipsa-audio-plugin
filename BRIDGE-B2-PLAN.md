@@ -1199,3 +1199,109 @@ a Studio-side change and belongs to whoever owns that tree.
 | — its 4 known failures | **unchanged** — upstream checksum refs ×2, Logger ×2 |
 | kala-engine | **27 suites / 252 tests, 0 failed** |
 | REAPER scan + load | **clean** — the probe and the B7-A re-run instantiate both plugins |
+
+---
+
+## §V2-03. Studio monitors the DAW — the Bridge half
+
+Studio's half was already built and pushed (`friday-studio` e1632d2,
+`studio/bridge_audio.py`, whose docstring is the wire contract). This is the
+sender.
+
+### §V2-03-1. The contract, and where the tap sits
+
+TCP `127.0.0.1:47801` — its own socket, because 47800 is NDJSON and binary does
+not belong on it. One `audio_hello` line, then raw frames of `b"FBAF"` + u32 LE
+sequence + `block × channels` float32 LE, **frame-major**.
+
+The tap is in `RendererProcessor::processBlock` **after the whole chain has
+run**, out of the same `processingBuffer_` the monitoring copy-back reads. What
+Studio monitors is the render the room is getting. Transport only, per V2-01:
+it copies and interleaves samples that are already finished.
+
+**Width is the room's rendered layout**, and getting there took two wrong
+answers. Three numbers are in scope at that point and only one is the bed:
+
+| candidate | value here | why not |
+|---|---|---|
+| `channelsToOutput` | **2** | the plugin's negotiated output bus; REAPER makes it stereo, and the copy-back truncates the bed on its way to the DAW |
+| `buffer.getNumChannels()` | **12 → 36** | whatever the host hands this call; flips as REAPER moves between realtime and offline render, so the stream renegotiated mid-run |
+| room speaker layout | **12** | 7.1.4, and it stays 7.1.4 |
+
+### §V2-03-2. Real-time discipline
+
+The object bus's rules, reused. The audio thread interleaves into a
+preallocated scratch and pushes into a preallocated lock-free SPSC ring — no
+allocation, no lock, no socket. A worker drains and writes. A stalled receiver
+fills the ring and blocks are **dropped and counted**; `processBlock`'s cost
+never depends on the network. With no Studio listening `pushBlock` returns on a
+single relaxed load, so an unconnected feed costs nothing and reports no drops.
+`block` is fixed by the hello, so the ring doubles as a repacketiser: any host
+buffer size in, exactly 512-frame wire frames out, no seam.
+
+### §V2-03-3. A defect the tests found by dying
+
+JUCE sets `SO_NOSIGPIPE` on **macOS only** — `juce_Network_linux.cpp:385` is
+inside `#if JUCE_MAC`. On Linux, writing to a socket whose peer has gone raises
+**SIGPIPE**, whose default action **terminates the process**. The process here
+is the DAW, and Studio quitting mid-mix is not an edge case.
+
+It surfaced as the new tests *dying* rather than failing (exit 13, no output).
+`blockSigPipeOnThisThread()` blocks it for the sender thread only: `write()`
+then fails with `EPIPE`, which every send path here already reads as "the peer
+is gone, reconnect", and the host's own signal disposition is untouched — a
+plugin has no business installing process-wide handlers. **The B4 `StudioLink`
+worker had the same exposure** and gets the same line. A regression test pins
+it: if the guard goes, that test does not fail, the binary dies.
+
+The feed also polls for EOF while idle, because a departed Studio is otherwise
+only discovered by the next write — with the transport stopped it would sit
+"connected" to a dead socket indefinitely.
+
+### §V2-03-4. The bench renderer has been rendering silence all along
+
+Its `<mix_presentations/>` is empty; `initializeMixPresentations()` then creates
+one **with no audio elements in it**; Eclipsa renders a mix presentation. So the
+monitoring bed was silent — in B2, in B6, in B7. Nothing caught it because the
+KALA export path renders *captured objects* and never reads that bed, so every
+null gate to date passed over a silent monitor. V2-03 is the first thing that
+reads it.
+
+The gate's renderer state now authors a real presentation containing the audio
+element. Doing that exposed a second one: the renderer reaches for the
+presentation's loudness record with `.value()`, so a presentation without a
+matching entry **aborts the plugin** (`std::bad_optional_access`, observed as a
+REAPER SIGABRT). The state authors that too. Both are upstream robustness
+issues in Eclipsa, recorded here, not fixed on this branch.
+
+### §V2-03-5. Gate result
+
+Headless REAPER 7.78 → feed → a real `BridgeAudioFeed`, 997 Hz stem at az
++30.000, transport looping a 2 s region for 62 s. `docs/evidence/v203/`.
+
+| Check | Result |
+|---|---|
+| hello | `{"type":"audio_hello","version":1,"sample_rate":48000,"channels":12,"block":512}` |
+| channel mapping | **L only on both sides — MATCH** (az +30 is M+030 = L) |
+| channel balance | **worst delta 0.000 dB** — PASS at 0.5 dB |
+| spectrum | **997.0 Hz feed, 997.0 Hz master — MATCH** |
+| sequence gaps | **0** over 6720 frames / 69.4 s |
+| frames missing | **0** — a Bridge-side drop never gets a sequence number, so this is the number that would see one |
+| Studio ring overflows | 6 (0.09%) — the Python puller's own GC pauses, receiver-side, not the wire |
+| absolute level | feed L **−21.01 dBFS**, master L **−16.00 dBFS** |
+
+That last row is reported rather than asserted, and it corroborates §5: the gap
+is **+5.01 dB**, which is the export's BS.1770 normalisation — the same +5.0 dB
+the B2 reference recorded. The feed carries the raw monitoring render, because
+that is what a monitor is. Asserting the two equal in absolute terms would have
+meant asserting the mastering gain away.
+
+### §V2-03 regression
+
+| Check | Result |
+|---|---|
+| B2-5 null, az +30.000 vs original `B2_ref.iamf` | **−inf dBFS, sample-exact** — unchanged |
+| Bridge unit suite | **320 tests / 314 passed**, 2 skipped (was 314 / 308: +6 feed tests) |
+| — its 4 known failures | **unchanged** — upstream checksum refs ×2, Logger ×2 |
+| kala-engine | **27 suites / 252 tests, 0 failed** |
+| REAPER scan + load | **clean** — both gate runs instantiate both plugins, under the `timeout` harness |
