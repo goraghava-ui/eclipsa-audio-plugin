@@ -189,10 +189,19 @@ class ElevationListener : public juce::AudioProcessorValueTreeState::Listener,
       y = pt.a[1];
     }
 
-    // Sphere equation.
+    // The unit sphere, which is what "dome" means everywhere else: the rim is
+    // the horizon and the centre is the zenith, so the elevation this surface
+    // assigns at horizontal radius r is exactly acos(r).
+    //
+    // It used to be 2*sqrt(1 - r^2) - 1 — a dome over a room whose floor is at
+    // -1, putting the rim at floor level and reading 55.7 deg at half radius
+    // where the sphere reads 60. This is the only implementation of the dome
+    // surface: the panner pad, the room views, Eclipsa's monitoring render and
+    // the KALA export all reach it through getDomeElevationPtClamped, so they
+    // agree by construction rather than by four matching edits.
     double x2 = x * x;
     double y2 = y * y;
-    double height = 2 * std::sqrt(std::max(0.0, 1.0 - (x2 + y2))) - 1.f;
+    double height = std::sqrt(std::max(0.0, 1.0 - (x2 + y2)));
     return {(float)x, (float)height, (float)y};
   }
 
