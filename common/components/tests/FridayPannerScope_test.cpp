@@ -406,20 +406,16 @@ TEST_F(ScopeModeFixture, flat_mode_can_still_move_an_object_at_the_origin) {
   EXPECT_GT(azimuth(), 10.0f);
 }
 
-// Eclipsa's dome is NOT Studio's dome, and this is where that shows.
+// Eclipsa's dome IS Studio's dome now: the unit sphere, el = acos(r), rim at
+// the horizon and centre at the zenith.
 //
-// Studio's dome constraint is the unit sphere: el = acos(r), so the rim is the
-// horizon and the centre is the zenith. Eclipsa's is
-// height = 2*sqrt(1 - x^2 - y^2) - 1, a dome over a room whose FLOOR is at -1:
-// the rim is floor level, not ear level. At half radius Studio says 60 deg and
-// Eclipsa says 55.7.
-//
-// The pad defers to Eclipsa's, deliberately: that surface is what
-// ElevationListener writes into Z and therefore what the monitoring render and
-// the exported file obey. Matching Studio exactly would mean changing Eclipsa's
-// dome equation, which moves audio, not pixels. Recorded in
-// BRIDGE-B2-PLAN.md §B5 rather than changed here.
-TEST_F(ScopeModeFixture, dome_mode_rides_eclipsas_dome) {
+// It used to be height = 2*sqrt(1 - x^2 - y^2) - 1 — a dome over a room whose
+// floor is at -1, so the rim sat at floor level and half radius read 55.7 deg
+// where the sphere reads 60. The pad has always deferred to whatever
+// ElevationListener writes into Z, because that surface is what the monitoring
+// render and the exported file obey; closing the gap therefore meant changing
+// the surface, not the pad. Done in BRIDGE-B2-PLAN.md §B7 and gated there.
+TEST_F(ScopeModeFixture, dome_mode_rides_the_unit_sphere) {
   useMode(AudioElementSpatialLayout::Elevation::kDome);
   dragTo({280.0f, 280.0f - 235.0f * 0.5f});  // halfway in, dead ahead
 
@@ -428,15 +424,52 @@ TEST_F(ScopeModeFixture, dome_mode_rides_eclipsas_dome) {
   const float z =
       surfaceHeight(AudioElementSpatialLayout::Elevation::kDome) / 50.0f;
   const float r2 = x * x + y * y;
-  EXPECT_NEAR(z, 2.0f * std::sqrt(1.0f - r2) - 1.0f, 0.02f);
+  EXPECT_NEAR(z, std::sqrt(1.0f - r2), 0.02f);
   EXPECT_GT(z, 0.0f) << "inside the rim means elevated";
-  // And it IS a dome: the centre is the top of it.
+  // And it IS a dome: the centre is the top of it, the rim is the horizon.
   EXPECT_NEAR(ElevationListener::getDomeElevationPtClamped({0.f, 0.f, 0.f}, {})
                   .a[1],
               1.0f, 1e-4f);
   EXPECT_NEAR(ElevationListener::getDomeElevationPtClamped({0.f, 1.f, 0.f}, {})
                   .a[1],
-              -1.0f, 1e-4f);
+              0.0f, 1e-4f);
+}
+
+// The parity that the equation change bought, stated against Studio's own
+// numbers rather than against a restatement of Eclipsa's formula.
+//
+// Studio's `PannerScope.constraint_elevation("dome")` in
+// friday-studio/studio/ui/widgets.py is `degrees(acos(r))` over the normalised
+// radius. These are its values at the five sample radii, transcribed; the
+// surface has to land on them within 0.01 deg, which is far tighter than the
+// 4.3 deg the old equation was out by at half radius.
+TEST(FridayPannerSurface, dome_matches_studio_constraint_elevation) {
+  struct Sample {
+    float r;
+    double studioElevationDeg;  // degrees(acos(r))
+  };
+  constexpr Sample kSamples[] = {
+      {0.00f, 90.0},
+      {0.25f, 75.52248781407008},
+      {0.50f, 60.0},
+      {0.75f, 41.40962210927086},
+      {1.00f, 0.0},
+  };
+
+  for (const auto& s : kSamples) {
+    // Walk out along +Y so the radius is unambiguous, and read the height the
+    // one shared surface assigns there.
+    const auto pt =
+        ElevationListener::getDomeElevationPtClamped({0.0f, s.r, 0.0f}, {});
+    const double height = pt.a[1];
+    // Elevation of the point the surface put us on, measured from the
+    // listening plane at the origin.
+    const double elevationDeg =
+        std::atan2(height, (double)s.r) * 180.0 / juce::MathConstants<double>::pi;
+
+    EXPECT_NEAR(elevationDeg, s.studioElevationDeg, 0.01)
+        << "r = " << s.r << ": Eclipsa's dome must agree with Studio's";
+  }
 }
 
 TEST_F(ScopeModeFixture, a_constrained_mode_lifts_the_object_off_the_floor) {
