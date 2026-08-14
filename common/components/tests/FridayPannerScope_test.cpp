@@ -472,6 +472,86 @@ TEST(FridayPannerSurface, dome_matches_studio_constraint_elevation) {
   }
 }
 
+//======================================================================
+// The curve's log domain (§B8)
+//======================================================================
+
+namespace {
+/// The curve's constants, and the unguarded expression exactly as it stood
+/// before the domain guard. The tests below use this as the reference the
+/// guarded surface has to reproduce.
+constexpr int kCurveAmp = 272;
+constexpr float kCurveOffs = 1.11f;
+constexpr float kCurveScale = 0.336f;
+constexpr float kCurveShift = 0.946f;
+
+float unguardedCurveHeight(float u) {
+  return std::max(-1.f,
+                  kCurveScale * std::log(kCurveAmp * (u + kCurveShift)) -
+                      kCurveOffs);
+}
+}  // namespace
+
+// The curve takes a log, and its argument goes NEGATIVE inside the room.
+//
+// ElevationListener hands the surface u = -Y/50, so the argument is
+// 272*(u + 0.946): it reaches zero at u = -0.946 and is negative for every Y
+// past 47.3, i.e. the front five per cent of the depth axis. std::log of a
+// negative is NaN, and nothing but the argument ORDER of the std::max below it
+// kept that NaN from escaping -- max(a, b) returns `a < b ? b : a`, and every
+// comparison against NaN is false, so it returned the -1.f that happened to be
+// first. Written the other way round, or under -ffast-math, the same line
+// returns NaN into a position parameter.
+//
+// The surface now tests the domain instead of relying on that. Y = +50 is the
+// front rim, the pose a user reaches by dragging the pad as far forward as it
+// goes -- not an edge case they have to construct.
+TEST(FridayPannerSurface, curve_is_finite_across_the_whole_depth_axis) {
+  struct Sample {
+    float y;             // the Y parameter, in its [-50, +50] units
+    float expectHeight;  // what the surface must answer
+  };
+  // Pinned, and the last one is the whole point: 272*(-1 + 0.946) < 0.
+  constexpr Sample kSamples[] = {
+      {-50.0f, 0.9972502f},   // rear rim
+      {0.0f, 0.7548972f},     // centre
+      {45.0f, -0.2610328f},   // still inside the log's domain
+      {50.0f, -1.0f},         // front rim -- past it
+  };
+
+  for (const auto& s : kSamples) {
+    // Mirror the listener exactly: it negates Y before calling the surface.
+    const float height =
+        ElevationListener::getCurveElevationPt({0.0f, -s.y / 50.0f, 0.0f}).a[1];
+
+    EXPECT_FALSE(std::isnan(height)) << "Y = " << s.y << " produced NaN";
+    EXPECT_TRUE(std::isfinite(height)) << "Y = " << s.y;
+    EXPECT_GE(height, -1.0f) << "Y = " << s.y << ": below the room floor";
+    EXPECT_NEAR(height, s.expectHeight, 1e-6f) << "Y = " << s.y;
+  }
+}
+
+// The guard may only change the answer where the old code had none. Everywhere
+// the log's argument was positive, the arithmetic is untouched and the result
+// has to be bit-for-bit what it always was -- this mode is NOT being aligned to
+// anything, so a drag under it must land exactly where it used to.
+TEST(FridayPannerSurface, curve_is_bit_identical_wherever_the_log_was_defined) {
+  int compared = 0;
+  for (int i = -10000; i <= 10000; ++i) {
+    const float u = i / 10000.0f;  // the value the listener passes through
+    if (!(kCurveAmp * (u + kCurveShift) > 0.0f)) {
+      continue;  // the old code went NaN here; nothing to preserve
+    }
+    const float now =
+        ElevationListener::getCurveElevationPt({0.0f, u, 0.0f}).a[1];
+    const float before = unguardedCurveHeight(u);
+    ASSERT_EQ(now, before) << "u = " << u << " moved";
+    ++compared;
+  }
+  // Guard against the loop silently skipping everything.
+  EXPECT_GT(compared, 19000) << "the sweep did not cover the defined domain";
+}
+
 TEST_F(ScopeModeFixture, a_constrained_mode_lifts_the_object_off_the_floor) {
   // Whatever the surface's shape, moving IN from the rim must gain height —
   // that is what makes the radar readable as a room rather than a flat map.

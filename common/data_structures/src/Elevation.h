@@ -219,7 +219,25 @@ class ElevationListener : public juce::AudioProcessorValueTreeState::Listener,
     const float kShift = 0.946f;
     // The curve is logarithmic. Shifts, offsets, and scalings were tweaked with
     // the constant editor.
-    float height = kScale * std::log(kAmp * (pt.a[1] + kShift)) - kOffs;
+    //
+    // The argument goes NEGATIVE inside the room. The listener passes
+    // u = -Y/50, so kAmp*(u + kShift) hits zero at u = -0.946 and is negative
+    // for every Y past 47.3 -- the front five per cent of the depth axis, which
+    // is a pose you reach by dragging the pad fully forward. std::log answers
+    // NaN there, and the only thing that kept it from reaching a position
+    // parameter was the argument ORDER of the std::max below: max(a, b) is
+    // `a < b ? b : a`, comparisons against NaN are all false, so it returned
+    // the -1.f that happened to be written first. Swap the arguments, or build
+    // with -ffast-math, and NaN escapes instead.
+    //
+    // So test the domain rather than depend on that. The curve is already
+    // past the floor before the log gives out -- it reaches -1 at u = -0.9409
+    // and the domain ends at -0.946 -- so the floor IS the limit value here,
+    // and the answer outside the domain is the same -1 the clamp was giving.
+    // Nothing moves; it just no longer moves by accident.
+    const float logArg = kAmp * (pt.a[1] + kShift);
+    float height =
+        logArg > 0.f ? kScale * std::log(logArg) - kOffs : -1.f;
     height = std::max(-1.f, height);
     return {pt.a[0], height, pt.a[2]};
   }
