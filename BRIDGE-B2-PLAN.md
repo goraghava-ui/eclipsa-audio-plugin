@@ -1305,3 +1305,108 @@ meant asserting the mastering gain away.
 | — its 4 known failures | **unchanged** — upstream checksum refs ×2, Logger ×2 |
 | kala-engine | **27 suites / 252 tests, 0 failed** |
 | REAPER scan + load | **clean** — both gate runs instantiate both plugins, under the `timeout` harness |
+
+---
+
+## §PA. Phase A close-out — the two recorded follow-ups
+
+### §PA-1. §11's automation follow-up: the export renders the pan
+
+**§11 is closed.** The capture has carried a position per `processBlock` since
+B2, and the `.fstudio` handoff has been shipping real keyframes since B4 — but
+`KalaIamfWriter` handed KALA only the scalar `o.az_deg`, and
+`kala_session_add_object` takes **one direction for a whole object**. So the
+export rendered every take at a single position. Not a zipper: no automation at
+all.
+
+Measured before touching it. A scripted REAPER parameter envelope sweeps
+azimuth **−90 → +90 in one second**; the Bridge exports the `.iamf` *and* a
+`.fstudio` carrying the keyframes it captured (47 of them, one per 1024-sample
+block); the reference is `studio_cli` rendering **that same handoff**, so both
+sides are given identical automation by construction and the null measures only
+how each renders it.
+
+| | worst channel | verdict |
+|---|---|---|
+| **before** | **−14.00 dBFS** | FAIL |
+| **after** | **−118.47 dBFS** | **PASS** |
+
+The before number is stark: the Bridge put the entire sweep in **Ls** — the
+last position it captured — while Studio moved it across L, R, C, Ls and Rs.
+After, every channel matches: L −26.05, R −26.05, C −27.83, Ls −19.27,
+Rs −28.40 on both sides. The −118 dBFS residual is f32/f64 rounding between the
+Rust and NumPy paths, 28 dB under the gate.
+
+**The ramping is KALA's**, per V2-01. `kala_session_add_object_automated`
+(kala-engine `72234b0`) mirrors `studio/renderer.py` step for step: speaker
+gains at each **1024-frame** block edge from the interpolated keyframe state,
+ramped linearly across the block — click-free without per-sample panning cost.
+Interpolation is Studio's `Object.state_at`: linear, held flat outside the
+keyframes, azimuth taking the shorter way round. `BLOCK = 1024` is part of the
+render's identity, not a tuning knob; the null depends on it. The panner is
+factored into one `ObjectPanner` shared with the static entry point so the two
+cannot drift, and **a single keyframe renders identically** — which is why the
+B2-5 static null is untouched.
+
+### §PA-2. The REAPER exit crash — found, and fixed in the fork
+
+Not upstream-unfixable. **Fixed.**
+
+A 20 s reproducer isolates it (`docs/evidence/exit/quit_probe.lua`: load both
+plugins, roll nothing, quit — no export needed, which already places the fault
+in static teardown). Under gdb, every time:
+
+```
+#0  0x00007fff393128b0 in ?? ()                    <- unmapped
+#1  boost::log::v2s_mt_posix::core::~core()        <- in our .so
+#2  sp_counted_impl_p<core>::dispose()
+#3  shared_ptr<core>::~shared_ptr()
+#4  __run_exit_handlers                            <- process exit
+```
+
+Boost.Log's core is a static `shared_ptr` compiled into each plugin `.so`. The
+host unloads plugins during shutdown, libc then runs the exit handlers, and
+`~core()` calls into code that is no longer mapped.
+
+**Emptying the core is not enough**, and each step was measured rather than
+assumed:
+
+| attempt | result |
+|---|---|
+| `remove_all_sinks()` | still SIGSEGV |
+| `+ reset_filter()`, clear global attributes, `set_logging_enabled(false)` | still SIGSEGV |
+
+The fault is inside `~core()` itself, not in what it holds. So the core must
+**never be destroyed**: one reference is deliberately leaked, pinning the
+refcount above zero for the life of the process, and `~core()` never runs. The
+allocation returns to the OS at exit like everything else.
+
+Nothing is lost by leaking it. A function-local static detacher — constructed
+*after* Boost's core, therefore destroyed *before* any of Boost's own teardown —
+still flushes and closes the file sink while the `.so` is unquestionably mapped.
+Every log line is on disk before shutdown begins, which is more than the
+crashing version could promise; the renderer's log is still 15 KB per run.
+
+**The `timeout` harness stays**, but it no longer swallows anything: the gate
+now asserts the exit code.
+
+| run | exit |
+|---|---|
+| REAPER scan + load | **0** |
+| export run 1 | **0** |
+| export run 2 | **0** |
+| sweep export | **0** |
+| reproducer ×3, before the fix | **139 (SIGSEGV) ×3** |
+| reproducer ×3, after the fix | **0 ×3** |
+
+### §PA regression
+
+| Check | Result |
+|---|---|
+| B2-5 null, az +30.000 vs original `B2_ref.iamf` | **−inf dBFS, sample-exact** |
+| Sweep null, az −90 → +90 in 1 s vs `studio_cli` | **−118.47 dBFS** (was −14.00) |
+| Bridge unit suite | **320 tests / 314 passed**, 2 skipped |
+| — its 4 known failures | **unchanged** — upstream checksum refs ×2, Logger ×2 |
+| kala-engine | **27 suites / 252 tests, 0 failed** |
+| REAPER scan + load | **clean, and now exits 0** |
+| friday-studio | 73d0acb, **171 passed** |
