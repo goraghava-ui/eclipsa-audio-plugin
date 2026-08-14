@@ -1073,3 +1073,129 @@ the harnesses are run under `timeout` and judged by their logs and artefacts.
 And the unit suite must still be run from an in-tree `build/`, per
 `docs/BUILDING-LINUX.md`; out of tree eight `FileOutputTests` fail on missing
 fixtures and `verify_metadata` segfaults.
+
+---
+
+## §B8. The remaining elevation modes — mapped, and mostly not aligned
+
+§B7 aligned dome. This is the mapping study for the other four, done before
+any code was written, and its result is that **only one mode was ever
+alignable and it was already done**. Nothing here changes a surface.
+
+### §B8-1. Why dome was the easy one
+
+Studio's surfaces are all `f(r_frac)` — surfaces of revolution, "elevation is
+a function of radius" (`studio/ui/widgets.py:50`), each clamped to `[0°, 90°]`
+at the call site (`_pos_to_azel:171`). Eclipsa's tent, arch and curve are all
+`f(Y)` — ridges extruded along X, spanning the full room height `[−1, +1]`
+including below the horizon.
+
+Same radius, three directions, measured:
+
+| mode | +Y (front) | +X (side) | 45° diagonal |
+|---|---|---|---|
+| **dome** | 0.00° | 0.00° | 0.00° |
+| tent | −45.00° | **+45.00°** | −22.50° |
+| arch | −45.00° | **+45.00°** | −0.00° |
+
+Dome is isotropic on both sides. That is the whole reason §B7 was a one-line
+swap, and it does not generalise.
+
+### §B8-2. The mapping
+
+| Eclipsa mode | Eclipsa equation | Studio surface | Studio equation | Outcome |
+|---|---|---|---|---|
+| Flat / None | none — the Z dial owns height | `manual` | `return self._el` (hold) | **Already aligned.** Both azimuth-only, height held by the user. Nothing to change |
+| Dome | `√(1 − x² − y²)`, f(r) | `dome` | `degrees(acos(r))` | **Aligned in §B7**, exact to 0.01° |
+| Tent | `1 − 2·\|y\|`, f(Y) | `wedge` | `(1 − r)·45` | **Divergence — not aligned** |
+| Arch | `1 − 2y²`, f(Y) | — | — | **Divergence** — Studio has no parabolic surface |
+| Curve | `0.336·ln(272·(−y + 0.946)) − 1.11`, f(−Y) | — | — | **Divergence** — Studio has no logarithmic surface |
+| — | Eclipsa has no ceiling mode | `ceiling` | `degrees(atan2(1, 1.5r))` | **Unadopted** — adding a mode is not an alignment |
+
+**Tent is the one that looks alignable and is not.** Studio's own docstring
+calls wedge "tent: linear rise from the rim to a 45° ridge at center", and
+PRD-v2 §3.2 has both trees descending from Dolby Music Panner's
+Manual/Wedge/Dome/Ceiling. The names line up; the maths does not:
+
+| r | Eclipsa tent (along +Y) | Studio wedge | Δ |
+|---|---|---|---|
+| 0.00 | 90.00° | 45.00° | 45.00° |
+| 0.25 | 63.43° | 33.75° | 29.68° |
+| 0.50 | 0.00° | 22.50° | 22.50° |
+| 0.75 | −33.69° | 11.25° | 44.94° |
+| 1.00 | −45.00° | 0.00° | 45.00° |
+
+Three independent incompatibilities: **ridge vs cone** (tent is anisotropic,
+wedge is a surface of revolution), **peak** (tent starts at the zenith, wedge
+caps at 45°), **range** (tent crosses the horizon at r = 0.5 and reaches −45°
+at the rim; Studio clamps every surface to `[0°, 90°]`). Adopting wedge would
+not swap an equation, it would redefine what Eclipsa's Tent button means and
+move every existing session that uses it. **Owner decision, 2026-08-14: no.**
+
+### §B8-3. One code change — the curve's log domain
+
+Found while reading the equations for the table above, and fixed because it is
+robustness rather than alignment.
+
+`getCurveElevationPt` takes `std::log(272·(u + 0.946))`, and the listener
+passes `u = −Y/50`. That argument reaches zero at `u = −0.946` and is negative
+for every **Y past 47.3** — the front five per cent of the depth axis, which is
+where a fully-forward drag lands. `std::log` answers NaN there.
+
+Nothing but the **argument order** of the `std::max` on the next line kept it
+in: `max(a, b)` is `a < b ? b : a`, every comparison against NaN is false, so it
+returned the `-1.f` that happened to be written first. **Measured before
+touching it** — the new tests pass against the unguarded code — so this was
+latent, not live. Written the other way round, or built with `-ffast-math`, the
+same line returns NaN into a position parameter.
+
+The surface now tests the domain. The curve is already past the floor before
+the log gives out (it reaches −1 at `u = −0.9409`; the domain ends at −0.946),
+so the floor **is** the limit value and the answer outside the domain is the
+same −1 the clamp was giving. Two tests hold it: one pins Y = −50, 0, +45, +50
+finite and non-NaN, the other sweeps `u` over 20001 steps and asserts the result
+is bit-for-bit the old expression everywhere the old expression was defined.
+Curve is not being aligned to anything, so a drag under it must land exactly
+where it always did — and it does.
+
+### §B8-4. Handoff-range note — objects below the horizon
+
+tent, arch and curve can all put an object under the listening plane. Studio
+cannot represent one. So the question is what happens on handover, and it was
+measured rather than assumed: one pose the plugin really produced (tent, front
+rim, X = 0 / Y = 50 → Z = −50 → **el −45°**), pushed through **both** routes in
+one run — the live NDJSON link against a real `studio.bridge_link.BridgeLink`,
+and the `.fstudio` written beside the exported `.iamf`. `docs/evidence/b8/`.
+
+| stage | what happens to el = −45° |
+|---|---|
+| Bridge live link (`scene`) | **verbatim** — `"elevation": -45.0`, no clamp, no warning |
+| Bridge `.fstudio` handoff | **verbatim** — `"elevation": -45.0` |
+| `Keyframe.clamped()` (`session.py:46`) | **kept** — the clamp is `[−90, +90]`, not `[0, 90]` |
+| `studio_cli validate` | **`session ok`** — no warning |
+| Scope `_radius_frac` (`widgets.py:150`) | **collapsed** — clamps to `[−5, 90]`, so −5°, −45° and −90° all project to the same ring, **0.84 px** inside where el 0 draws |
+| Render (`studio_cli export`, 7.1.4) | **collapsed** — el −45 is **byte-identical** to el 0, all energy in C |
+
+**Silent at every stage, lossy at two — and the loss happens at the far end
+rather than at the door.** The render is not wrong: 7.1.4 has no speaker below
+the horizon and VBAP has nowhere else to put it. But a user dragging Eclipsa's
+Tent to the front rim sees the object sitting on Studio's rim with nothing to
+say that 45° of elevation was discarded.
+
+**Flagged for the Studio session, not done here** (friday-studio is untouched
+by this branch): a notice at handoff-load and on the live scene — "N object(s)
+below the horizon; this layout renders them at 0°" — would close the gap. It is
+a Studio-side change and belongs to whoever owns that tree.
+
+### §B8 regression
+
+| Check | Result |
+|---|---|
+| B7-A null, az +30.000 vs original `B2_ref.iamf` | **−inf dBFS, sample-exact** — unchanged |
+| Curve bit-identity sweep, 20001 steps | **exact** wherever the log was defined |
+| Curve at Y = −50, 0, +45, +50 | **finite, no NaN** — the last is past the log's domain |
+| Elevation surfaces changed | **none** — tent, arch, curve, dome, flat all unmoved |
+| Bridge unit suite | **314 tests / 308 passed**, 2 skipped (was 312 / 306: +2 curve tests) |
+| — its 4 known failures | **unchanged** — upstream checksum refs ×2, Logger ×2 |
+| kala-engine | **27 suites / 252 tests, 0 failed** |
+| REAPER scan + load | **clean** — the probe and the B7-A re-run instantiate both plugins |
