@@ -1,0 +1,109 @@
+{
+ "events": [
+  {
+   "t": 1786699160.2221556,
+   "msg": {
+    "type": "_state",
+    "connected": true
+   }
+  },
+  {
+   "t": 1786699160.2222178,
+   "msg": {
+    "type": "hello",
+    "product": "friday-bridge",
+    "version": 1,
+    "session": "REAPER"
+   },
+   "remote": []
+  },
+  {
+   "t": 1786699160.2222364,
+   "msg": {
+    "type": "scene",
+    "objects": []
+   },
+   "remote": []
+  },
+  {
+   "t": 1786699160.2863793,
+   "msg": {
+    "type": "scene",
+    "objects": [
+     {
+      "name": "Audio",
+      "azimuth": -0.0,
+      "elevation": 0.0,
+      "spread": 0.0,
+      "gain_db": 0.0
+     }
+    ]
+   },
+   "remote": [
+    {
+     "name": "Audio",
+     "azimuth": -0.0,
+     "elevation": 0.0,
+     "spread": 0.0,
+     "gain_db": 0.0
+    }
+   ]
+  },
+  {
+   "t": 1786699160.3525403,
+   "msg": {
+    "type": "scene",
+    "objects": [
+     {
+      "name": "source",
+      "azimuth": -0.0,
+      "elevation": -45.0,
+      "spread": 0.0,
+      "gain_db": 0.0
+     }
+    ]
+   },
+   "remote": [
+    {
+     "name": "source",
+     "azimuth": -0.0,
+     "elevation": -45.0,
+     "spread": 0.0,
+     "gain_db": 0.0
+    }
+   ]
+  },
+  {
+   "t": 1786699161.7758348,
+   "msg": {
+    "type": "handoff",
+    "path": "/data/build/b8/bridge_tent.fstudio"
+   },
+   "remote": [
+    {
+     "name": "source",
+     "azimuth": -0.0,
+     "elevation": -45.0,
+     "spread": 0.0,
+     "gain_db": 0.0
+    }
+   ]
+  },
+  {
+   "t": 1786699169.7194517,
+   "msg": {
+    "type": "scene",
+    "objects": []
+   },
+   "remote": []
+  },
+  {
+   "t": 1786699169.7194602,
+   "msg": {
+    "type": "_state",
+    "connected": false
+   }
+  }
+ ],
+ "final_remote": []
+}

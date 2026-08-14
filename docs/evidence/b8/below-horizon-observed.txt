@@ -1,0 +1,42 @@
+=== B8: a below-horizon object, Bridge -> Studio ===
+
+1. live NDJSON link (studio.bridge_link.BridgeLink, a real listener)
+   scene object as received : {"name": "source", "azimuth": -0.0, "elevation": -45.0, "spread": 0.0, "gain_db": 0.0}
+   elevation on the wire    : -45.0000 deg  -- carried verbatim, not clamped, no warning
+
+2. .fstudio handoff written beside the exported .iamf
+   keyframe as written      : {"t": 0.0, "azimuth": -0.0, "elevation": -45.0, "spread": 0.0, "gain_db": 0.0, "curve": "linear"}
+   elevation in the file    : -45.0000 deg  -- written verbatim
+
+3. studio.session.Keyframe.clamped()  (session.py:46)
+   elevation after clamp    : -45.0000 deg
+   the clamp is [-90, +90], NOT [0, 90] -- the session model keeps it
+
+4. studio.ui.widgets.PannerScope._radius_frac()  (widgets.py:150)
+   remote Bridge objects are drawn through _to_point -> _radius_frac,
+   which clamps elevation to [-5, 90] before projecting:
+
+      elevation      radius_frac    where it lands
+         +0.0 deg    0.940000        0.00 px inside el 0
+         -5.0 deg    0.936423        0.84 px inside el 0
+        -45.0 deg    0.936423        0.84 px inside el 0
+        -90.0 deg    0.936423        0.84 px inside el 0
+
+   every elevation at or below -5 projects to the SAME ring, 0.84 px
+   inside where a floor-level object draws. -45 is indistinguishable
+   from 0 on the scope, and nothing says so.
+
+5. the render (studio_cli export, 7.1.4)
+   studio_cli az 0 / el -45  vs  az 0 / el 0
+   byte-identical master     : True
+   max |sample difference|   : 0.0
+   channels carrying energy  : C
+
+   7.1.4 has no speaker below the horizon, so VBAP puts the object on
+   the floor layer. The height is not clamped on the way in -- it is
+   discarded at the end, silently, and the file is the same file.
+
+=== verdict: silent at every stage, lossy at two ===
+   wire  : verbatim      file  : verbatim      session: kept
+   scope : collapsed below -5   render: collapsed below 0
+   validate: 'session ok'. No error, no warning, anywhere.

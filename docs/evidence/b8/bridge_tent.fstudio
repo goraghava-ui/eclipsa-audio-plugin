@@ -1,0 +1,18 @@
+{
+  "friday_studio": 1,
+  "name": "bridge_tent",
+  "sample_rate": 48000,
+  "target_lkfs": -16.00,
+  "language": "en",
+  "label": "FRIDAY Bridge handoff",
+  "binaural_on_headphones": true,
+  "presentations": [],
+  "video_path": "",
+  "versions": [],
+  "scene_snapshots": [],
+  "layout_trims": {},
+  "beds": [],
+  "objects": [
+    {"name": "source", "file_path": "/data/build/b8/bridge_tent_source.wav", "keyframes": [{"t":0.000000,"azimuth":-0.0000,"elevation":-45.0000,"spread":0.0000,"gain_db":0.0000,"curve":"linear"}], "mute": false, "binaural_mode": "mid", "group": "", "zone": "", "snap": false}
+  ]
+}

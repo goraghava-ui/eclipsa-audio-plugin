@@ -1,0 +1,9 @@
+=== B8 probe: below-horizon object, az 0 el -45, elevation=tent ===
+audio device running=1 mode=Dummy Audio
+renderer state applied=true
+panner state applied=true
+loaded X=0.0000000 Y=50.0000000 Z=0.0000000 (before the surface runs)
+captured X=0.0000000 Y=50.0000000 Z=-50.0000000
+bounce issued
+iamf exists=true
+fstudio exists=true
