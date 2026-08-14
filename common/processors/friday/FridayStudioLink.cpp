@@ -179,6 +179,10 @@ bool StudioLink::send(const std::string& line) {
 }
 
 void StudioLink::run() {
+  // Same exposure as the V2-03 audio feed: Studio quitting between our
+  // isConnected() check and our write() would otherwise kill the host.
+  blockSigPipeOnThisThread();
+
   std::vector<ObjectReceiver::LiveObject> sent;
   int backoffMs = kBackoffMinMs;
   auto nextAttempt = std::chrono::steady_clock::now();

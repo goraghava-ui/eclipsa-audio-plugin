@@ -259,6 +259,20 @@ void RendererProcessor::processBlock(juce::AudioBuffer<float>& buffer,
       juce::jmin(totalNumOutputChannels, buffer.getNumChannels(),
                  processingBuffer_.getNumChannels());
 
+#if FRIDAY_KALA_EXPORT
+  // V2-03: hand Studio the rendered bed. This is deliberately AFTER the whole
+  // chain and takes exactly the channels the monitoring path is about to hand
+  // back, so what Studio monitors is what the DAW hears -- not a different
+  // fold and not a different point in the graph.
+  //
+  // Transport only: it copies and interleaves samples that are already
+  // finished. The call returns immediately when no Studio is connected, and
+  // drops rather than waits when one is connected but not keeping up, so
+  // processBlock's cost does not depend on the network.
+  friday::sharedAudioFeed().pushBlock(processingBuffer_, channelsToOutput,
+                                      buffer.getNumSamples());
+#endif
+
   for (int ch = 0; ch < channelsToOutput; ++ch) {
     buffer.copyFrom(ch, 0, processingBuffer_, ch, 0, buffer.getNumSamples());
   }

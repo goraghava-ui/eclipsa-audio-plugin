@@ -36,6 +36,7 @@ END_JUCE_MODULE_DECLARATION
 #include "audioelementplugin_publisher/MessagingThread.h"
 #include "channel_monitor/ChannelMonitorProcessor.h"
 #if FRIDAY_KALA_EXPORT
+#include "friday/FridayAudioFeed.h"
 #include "friday/FridayObjectCaptureProcessor.h"
 #include "friday/FridayObjectTransport.h"
 #include "friday/FridayStudioLink.h"

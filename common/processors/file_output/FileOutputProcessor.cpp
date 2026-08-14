@@ -82,6 +82,10 @@ void FileOutputProcessor::prepareToPlay(const double sampleRate,
     // V2-02: the live Studio link. It idles silently when Studio is not
     // running, so starting it here costs one sleeping thread and nothing else.
     friday::sharedStudioLink().start();
+    // V2-03: the live audio feed. Same deal -- it idles until Studio opens
+    // 47801, and the renderer only pushes into it once something connects.
+    friday::sharedAudioFeed().setSampleRate(sampleRate);
+    friday::sharedAudioFeed().start();
   }
 #endif
 }

@@ -41,7 +41,33 @@
 #include <unordered_map>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <csignal>
+#include <pthread.h>
+#endif
+
 namespace friday {
+
+/// Every FRIDAY sender thread must call this before it writes to a socket.
+///
+/// Studio can quit, or close the link, at any moment. Writing to a socket
+/// whose peer has gone raises SIGPIPE, and SIGPIPE's default action is to
+/// TERMINATE THE PROCESS -- which here is the DAW. JUCE guards against this
+/// only on macOS (`SO_NOSIGPIPE`, juce_Network_linux.cpp:385 is inside
+/// `#if JUCE_MAC`), so on Linux the exposure is real and it is ours to close.
+///
+/// Blocking it for the calling thread only is the narrow fix: `write()` then
+/// fails with EPIPE, which every send path here already reads as "the peer is
+/// gone, reconnect", and the host's own signal disposition is left alone --
+/// a plugin has no business installing process-wide handlers.
+inline void blockSigPipeOnThisThread() noexcept {
+#if !defined(_WIN32)
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set, SIGPIPE);
+  pthread_sigmask(SIG_BLOCK, &set, nullptr);
+#endif
+}
 
 /// Fixed wire header preceding each object block. POD, memcpy-able.
 struct ObjectBlockHeader {
