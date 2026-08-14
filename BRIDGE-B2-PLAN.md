@@ -920,6 +920,7 @@ Two consequences worth stating:
   The pad defers to Eclipsa's, because that is the surface that moves audio.
   Making them identical means changing Eclipsa's dome equation, which changes
   the render and the deliverable — **not done, flagged.**
+  → **Done and gated in §B7.**
 
 Two real defects surfaced while testing this, both of which would have shipped:
 
@@ -969,3 +970,106 @@ the old harness lands on 30.000723 instead, so it no longer matches that
 reference (−62.14 dBFS) and matches the original one instead (−109.53 dBFS). The
 regression target for B2-5 is the **original** `B2_ref.iamf` from here on; the
 regenerated one is kept only as the record of why it existed.
+
+---
+
+## §B7. The dome surface becomes Studio's dome
+
+The last item §B6-2 left open, treated as a gated change rather than a patch
+because three deliverable-producing paths read this surface.
+
+### §B7-1. What changed
+
+`ElevationListener::getDomeElevationPtClamped` computed
+`height = 2·√(1 − x² − y²) − 1` — a dome over a room whose floor is at −1, so
+its rim sat at floor level. It now computes `height = √(1 − x² − y²)`, the unit
+sphere, which is Studio's `PannerScope.constraint_elevation("dome")`:
+`el = acos(r)`, rim at the horizon, centre at the zenith.
+
+**One implementation, so agreement is structural.** That function is the only
+dome surface in the tree. The panner pad, the room views, Eclipsa's monitoring
+render and the KALA export all reach it through the same call, so they moved
+together; there was no second copy to keep in step. tent, arch, curve and flat
+are untouched.
+
+**What it means for a session.** A dome-constrained object at full radius now
+sits at ear level rather than on the floor — `getDomeElevationPtClamped` returns
+a height in [0, 1] where it returned [−1, 1]. That is the change; it is why this
+was gated.
+
+### §B7-2. A second defect, found by gating
+
+`parameterChanged` opened with `int newZ = currentZ`, three lines above the
+comment §B6-1 left promising the dome write would not be rounded. Every derived
+height was truncated to a whole unit. At normalised radius 0.5 the sphere wants
+Z = 43.30127 and the int gave 43 — 59.83° instead of 60.000°, small but enough
+to move the VBAP gains against a layout whose nearest speakers are at 45°, and
+enough to keep the elevated gate below sample-exact.
+
+`newZ` is now `float`. tent and arch keep the truncation they have always had,
+written as an explicit `std::trunc` instead of left to an implicit conversion;
+curve's `std::ceil` already produced an integral value. Only the dome's height
+changes.
+
+### §B7-3. The gates
+
+Both are headless REAPER 7.78 → KALA export → FFmpeg null against a
+`studio_cli` reference, the B2-5 harness unchanged. Evidence in
+`docs/evidence/b7/`.
+
+**A — the regression.** az +30.000, el 0, elevation mode "none". An
+azimuth-only pan never touches the dome surface, so this number had to stay
+exactly where §B6-1 left it. It did: **−inf dBFS, sample-exact on all 12
+channels**, against the **original** `B2_ref.iamf` — no reference regeneration,
+same captured `X=−25.0000000 Y=43.3012695`.
+
+**B — the pose the old surface got wrong.** az 0, el 60, elevation mode "dome".
+X = 0 and Y = 25 arrive with the plugin state and `ElevationListener` derives
+the height; the script writes no Z, so the gate cannot pass by asserting its own
+arithmetic. Captured **Z = 43.3012695** — 50·√(1 − 0.5²) to the last digit the
+parameter holds — and the null against a `studio_cli` reference at the same
+pose is **−inf dBFS, sample-exact**: TFL/TFR at −19.03, TRL/TRR at −41.70 on
+both sides, everything else silent on both sides.
+
+**The counterfactual, so the fix has a size.** The same Bridge export against a
+Studio reference authored at **55.6725°** — the elevation the old surface
+assigned at this radius — nulls at only **−40.29 dBFS** and fails the −90 dBFS
+gate outright. That is the error that was in the deliverable.
+
+| gate | pose | reference | result |
+|---|---|---|---|
+| B7-A | az +30.000, el 0, none | original `B2_ref.iamf` | **−inf dBFS, sample-exact** |
+| B7-B | az 0, el 60, **dome** | `B7_ref.iamf` (az 0, el 60) | **−inf dBFS, sample-exact** |
+| B7-B′ | az 0, el 60, **dome** | `B7_old.iamf` (az 0, el 55.6725) | **−40.29 dBFS, FAIL** — the defect, measured |
+
+### §B7-4. Parity screenshots
+
+Regenerated for both B5 poses. The Studio panels come back **byte-identical** —
+Studio did not move, the Bridge moved to meet it — and the Bridge panels
+changed on both dome poses while `bridge_tent_az+30.png` is byte-identical,
+which is the blast radius the change was supposed to have.
+
+The sheets are now composed by `docs/evidence/b5/parity_sheet.py`, committed so
+they are reproducible. It places the two 560×560 panels exactly where the
+original B5 sheets had them (the panel regions diff to zero); only the caption
+strip re-renders, in whatever sans the bench resolves.
+
+### §B7 regression
+
+| Check | Before B7 | After B7 |
+|---|---|---|
+| B2-5 null, az +30.000 vs original `B2_ref.iamf` | −inf dBFS, sample-exact | **−inf dBFS, sample-exact** |
+| Elevated null, az 0 / el 60, dome | not gated — the pose was wrong by 4.33° | **−inf dBFS, sample-exact** |
+| Dome vs Studio at r = 0, ¼, ½, ¾, 1 | 90 / 71.2 / 55.7 / 39.5 / −90° | **exact, asserted to 0.01°** |
+| Bridge unit suite | 311 / 305, 2 skipped | **312 / 306, 2 skipped** (+1 parity test) |
+| — its 4 known failures | checksum ×2, Logger ×2 | **unchanged, same 4** |
+| kala-engine | 27 suites / 252 tests | **27 suites / 252 tests, 0 failed** |
+| REAPER scan + load | clean | **clean** — both gate runs instantiate both plugins |
+
+Two operational notes from this run, neither a product defect: REAPER does not
+always exit cleanly after `Main_OnCommand(40004)` on this bench — gate A hung
+and gate B segfaulted, both **after** the export was written and verified — so
+the harnesses are run under `timeout` and judged by their logs and artefacts.
+And the unit suite must still be run from an in-tree `build/`, per
+`docs/BUILDING-LINUX.md`; out of tree eight `FileOutputTests` fail on missing
+fixtures and `verify_metadata` segfaults.
