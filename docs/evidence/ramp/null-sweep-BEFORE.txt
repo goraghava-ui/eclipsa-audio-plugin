@@ -1,0 +1,24 @@
+
+  A: bridge_sweep.iamf
+  B: ref-before/bridge_sweep.iamf
+  96000 frames, 12 ch @ 48 kHz
+
+   ch name   A rms dBFS  B rms dBFS  max|delta| dBFS
+    1 L            -inf      -26.05           -14.00
+    2 R            -inf      -26.05           -14.01
+    3 C            -inf      -27.83           -14.02
+    4 LFE          -inf        -inf             -inf
+    5 Ls         -17.49      -19.27           -14.48
+    6 Rs           -inf      -28.40           -14.03
+    7 Lrs          -inf        -inf             -inf
+    8 Rrs          -inf        -inf             -inf
+    9 TFL          -inf        -inf             -inf
+   10 TFR          -inf        -inf             -inf
+   11 TRL          -inf        -inf             -inf
+   12 TRR          -inf        -inf             -inf
+
+  worst channel: L (ch1) at -14.00 dBFS
+  sample-exact:  False
+
+  GATE GA (-90 dBFS): FAIL
+

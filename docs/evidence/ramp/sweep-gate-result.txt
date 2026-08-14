@@ -1,0 +1,9 @@
+=== automation ramp gate: az -90 -> +90 in 1 s ===
+audio device running=1 mode=Dummy Audio
+renderer state applied=true
+panner state applied=true
+envelopes written: 202 points each over 1.0 s
+start X=-50.0000000 Y=0.0000000 Z=0.0000000
+bounce issued
+iamf exists=true
+fstudio exists=true

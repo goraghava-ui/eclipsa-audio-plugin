@@ -130,11 +130,34 @@ bool KalaIamfWriter::close() {
 
   for (const auto& o : objects) {
     if (o.pcm.empty()) continue;
-    const int32_t rc = kala_session_add_object(
-        session, o.pcm.data(), o.pcm.size(), o.az_deg, o.el_deg, o.spread,
-        o.gain_db);
+
+    // The AUTOMATED entry point, not the static one. The capture carries a
+    // position per processBlock; feeding KALA only `o.az_deg` rendered the
+    // whole take at one direction -- a 1 s sweep from -90 to +90 came out
+    // parked at the last position, nulling at -14.00 dBFS against Studio
+    // rendering the very same keyframes. See BRIDGE-B2-PLAN.md section 11.
+    //
+    // KALA does the ramping, mirroring studio/renderer.py: gains at each
+    // 1024-frame block edge from the interpolated state, linear across the
+    // block. The pan stays in KALA (V2-01); all that happens here is handing
+    // over the timeline that was already captured.
+    std::vector<KalaKeyframe> keys;
+    keys.reserve(o.keyframes.size());
+    for (const auto& k : o.keyframes) {
+      keys.push_back(KalaKeyframe{k.t, k.az_deg, k.el_deg, k.spread,
+                                  k.gain_db});
+    }
+    if (keys.empty()) {
+      // The receiver guarantees at least one, but a static object must render
+      // identically either way, so make that explicit rather than assumed.
+      keys.push_back(KalaKeyframe{0.0, o.az_deg, o.el_deg, o.spread,
+                                  o.gain_db});
+    }
+
+    const int32_t rc = kala_session_add_object_automated(
+        session, o.pcm.data(), o.pcm.size(), keys.data(), keys.size());
     if (rc != KALA_OK) {
-      LOG_ERROR(0, std::string("kala_session_add_object failed: ") +
+      LOG_ERROR(0, std::string("kala_session_add_object_automated failed: ") +
                        kala_last_error());
       kala_session_free(session);
       return false;
