@@ -83,7 +83,13 @@ class ElevationListener : public juce::AudioProcessorValueTreeState::Listener,
   void parameterChanged(const juce::String& parameterID,
                         float newValue) override {
     float currentZ = parameterTree_->getZPosition();
-    int newZ = currentZ;
+    // float, not int. This was `int newZ`, which re-quantised every derived
+    // height to a whole unit -- including the dome's, three lines below the
+    // comment promising it would not be rounded. At normalised radius 0.5 the
+    // sphere wants 43.30127 and an int gave 43, which is 59.83 deg instead of
+    // 60 and enough to shift the VBAP gains. tent, arch and curve keep the
+    // truncation they have always had, made explicit below.
+    float newZ = currentZ;
     elevationLock_.enter();
     if (currentElevation_ == Elevation::kTent) {
       Coordinates::Point3D pt = {
@@ -91,7 +97,7 @@ class ElevationListener : public juce::AudioProcessorValueTreeState::Listener,
           (float)parameterTree_->getYPosition() / 50.f,
           (float)parameterTree_->getZPosition() / 50.f,
       };
-      newZ = getTentElevationPt(pt).a[1] * 50.f;
+      newZ = std::trunc(getTentElevationPt(pt).a[1] * 50.f);
     }
 
     if (currentElevation_ == Elevation::kArch) {
@@ -100,7 +106,7 @@ class ElevationListener : public juce::AudioProcessorValueTreeState::Listener,
           (float)parameterTree_->getYPosition() / 50.f,
           (float)parameterTree_->getZPosition() / 50.f,
       };
-      newZ = getArchElevationPt(pt).a[1] * 50.f;
+      newZ = std::trunc(getArchElevationPt(pt).a[1] * 50.f);
     }
 
     if (currentElevation_ == Elevation::kDome) {
