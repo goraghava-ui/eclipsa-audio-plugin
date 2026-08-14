@@ -260,17 +260,38 @@ void RendererProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                  processingBuffer_.getNumChannels());
 
 #if FRIDAY_KALA_EXPORT
-  // V2-03: hand Studio the rendered bed. This is deliberately AFTER the whole
-  // chain and takes exactly the channels the monitoring path is about to hand
-  // back, so what Studio monitors is what the DAW hears -- not a different
-  // fold and not a different point in the graph.
+  // V2-03: hand Studio the rendered bed. Deliberately AFTER the whole chain,
+  // out of the SAME processingBuffer_ the monitoring copy-back reads, so what
+  // Studio monitors is the render the room is getting -- not a second fold and
+  // not a different point in the graph.
+  //
+  // The width is the ROOM's rendered layout, not `channelsToOutput` and not
+  // the buffer's. All three differ, and only one of them is the bed:
+  //
+  //   channelsToOutput      the plugin's negotiated output bus, which REAPER
+  //                         can make stereo -- the copy-back below truncates
+  //                         the bed on its way out to the DAW
+  //   buffer.getNumChannels()  whatever the host hands this call, which moves
+  //                         between 12 and 36 as REAPER switches between
+  //                         realtime and offline render
+  //   room layout           7.1.4 = 12, and stays 12
+  //
+  // A monitor feed that renegotiated its stream every time the host changed
+  // buffer width would be useless, and one that followed the output bus would
+  // send Studio two channels of a 7.1.4 mix and call it a monitor.
   //
   // Transport only: it copies and interleaves samples that are already
   // finished. The call returns immediately when no Studio is connected, and
   // drops rather than waits when one is connected but not keeping up, so
   // processBlock's cost does not depend on the network.
-  friday::sharedAudioFeed().pushBlock(processingBuffer_, channelsToOutput,
-                                      buffer.getNumSamples());
+  const int bedChannels =
+      roomSetupRepository_.get().getSpeakerLayout().getRoomSpeakerLayout()
+          .getNumChannels();
+  friday::sharedAudioFeed().pushBlock(
+      processingBuffer_,
+      juce::jmin(bedChannels, buffer.getNumChannels(),
+                 processingBuffer_.getNumChannels()),
+      buffer.getNumSamples());
 #endif
 
   for (int ch = 0; ch < channelsToOutput; ++ch) {

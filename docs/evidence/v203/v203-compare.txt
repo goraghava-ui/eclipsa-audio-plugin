@@ -1,0 +1,40 @@
+=== V2-03: live feed vs the plugin's exported master ===
+
+feed   : 3440640 frames, 12 ch, tone from 1.200 s
+master : 96000 frames, 12 ch, tone from 0.000 s
+window : 1.0 s
+
+channels with energy, feed   : ['L']
+channels with energy, master : ['L']
+CHANNEL MAPPING: MATCH
+
+ch      feed dBFS  master dBFS  feed rel  master rel    delta
+L          -21.01       -16.00      0.00        0.00   0.000
+R            -inf         -inf      -inf        -inf        -
+C            -inf         -inf      -inf        -inf        -
+LFE          -inf         -inf      -inf        -inf        -
+Ls           -inf         -inf      -inf        -inf        -
+Rs           -inf         -inf      -inf        -inf        -
+Lrs          -inf         -inf      -inf        -inf        -
+Rrs          -inf         -inf      -inf        -inf        -
+TFL          -inf         -inf      -inf        -inf        -
+TFR          -inf         -inf      -inf        -inf        -
+TRL          -inf         -inf      -inf        -inf        -
+TRR          -inf         -inf      -inf        -inf        -
+
+mastering gain between them : +5.01 dB  (the export normalises, the monitor feed does not)
+worst channel balance delta : 0.000 dB on -
+BALANCE (tol 0.5 dB): PASS
+
+spectrum on L : feed peak 997.0 Hz, master peak 997.0 Hz  (stem is 997 Hz)
+SPECTRUM: MATCH
+
+=== stream health over the run ===
+stream seconds        : 69.433
+frames received       : 6720
+sequence gaps         : 0
+frames missing        : 0   (a Bridge-side drop never gets a sequence number, so this is what would notice one)
+Studio ring overflows : 6
+Studio underruns      : 110891   (the puller outrunning the stream, not a loss)
+
+GATE: PASS

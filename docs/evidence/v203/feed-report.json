@@ -1,0 +1,20 @@
+{
+ "hello": {
+  "type": "audio_hello",
+  "version": 1,
+  "sample_rate": 48000,
+  "channels": 12,
+  "block": 512
+ },
+ "stream_seconds": 69.433,
+ "frames_received": 6720,
+ "frames_expected_for_wall_clock": 6509,
+ "frames_missing": 0,
+ "audio_seconds": 71.68,
+ "counters": {
+  "dropped_frames": 6,
+  "sequence_gaps": 0,
+  "underruns": 110891
+ },
+ "wav": "/data/build/v203/feed-capture.wav"
+}
